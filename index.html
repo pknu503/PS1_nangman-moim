@@ -119,9 +119,9 @@ td{padding:11px 14px;border-bottom:1px solid var(--bdr)}
 // ============ DATA ============
 const GITHUB_RAW = 'https://raw.githubusercontent.com/pknu503/nangman-moim/main';
 const CLUBS = {
-  hora:{id:'hora',name:'오라',en:'Hora',color:'#9B8EC4',emoji:'🕐',logo:`${GITHUB_RAW}/%EC%98%A4%EB%9D%BC.jpg`,desc:'시간을 함께하는 동아리'},
-  myth:{id:'myth',name:'클럽신화',en:'MYTH',color:'#D4864A',emoji:'🔥',logo:`${GITHUB_RAW}/%EC%8B%A0%ED%99%94.jpg`,desc:'신화를 만들어가는 동아리'},
-  theme:{id:'theme',name:'띰',en:'Theme',color:'#4A7FC4',emoji:'🔍',logo:`${GITHUB_RAW}/%EB%9D%BC.png`,desc:'주제를 탐구하는 동아리'},
+  hora:{id:'hora',name:'오라',en:'Hora',color:'#9B8EC4',emoji:'🕐',logo:`${GITHUB_RAW}/%EC%98%A4%EB%9D%BC.jpg`,desc:'시간을 함께하는 동아리',boardName:'오라타임'},
+  myth:{id:'myth',name:'클럽신화',en:'MYTH',color:'#D4864A',emoji:'🔥',logo:`${GITHUB_RAW}/%EC%8B%A0%ED%99%94.jpg`,desc:'신화를 만들어가는 동아리',boardName:'신화전기'},
+  theme:{id:'theme',name:'띰',en:'Theme',color:'#4A7FC4',emoji:'🔍',logo:`${GITHUB_RAW}/%EB%9D%BC.png`,desc:'주제를 탐구하는 동아리',boardName:'테마찾기'},
 };
 // 띰 로고는 띰.png
 CLUBS.theme.logo = `${GITHUB_RAW}/%EB%9D%BC.png`;
@@ -418,9 +418,10 @@ function renderHome(){
     return `<div class="card" style="border-left:4px solid ${c?.color};padding:18px 20px;margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div style="flex:1">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
             ${logoImg(c,24,6)}
             <span style="font-size:11px;font-weight:700;color:${c?.color};background:${c?.color}15;padding:2px 10px;border-radius:20px">${c?.name}</span>
+            ${p.isGlobal?`<span style="font-size:10px;font-weight:700;color:#fff;background:var(--pink);padding:2px 8px;border-radius:20px">📣 전체공지</span>`:''}
           </div>
           <h3 style="font-size:15px;font-weight:700;margin-bottom:6px">${esc(p.title)}</h3>
           <p style="color:var(--muted);font-size:13px;line-height:1.7">${esc(p.content)}</p>
@@ -466,11 +467,13 @@ function showPromoForm(){
   const myClubs=state.user.clubs||[];
   const clubOpts=(state.isAdmin?Object.values(CLUBS):Object.values(CLUBS).filter(c=>myClubs.includes(c.id)))
     .map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  const allOpt=state.isAdmin?`<option value="all">📣 전체 동아리 (모든 게시판에 게시)</option>`:'';
   document.getElementById('promo-form-area').innerHTML=`
   <div class="card" style="margin-bottom:16px;border:1.5px solid var(--pink-l)">
     <h3 style="font-size:14px;font-weight:700;margin-bottom:14px">홍보글 작성</h3>
     <div style="display:flex;flex-direction:column;gap:10px">
-      <select class="inp" id="pf-club"><option value="">동아리 선택</option>${clubOpts}</select>
+      <select class="inp" id="pf-club"><option value="">동아리 선택</option>${allOpt}${clubOpts}</select>
+      ${state.isAdmin?`<div class="notice" id="pf-all-notice" style="display:none">📣 <strong>전체 게시</strong>: 오라·클럽신화·띰 게시판에 동시에 올라갑니다.</div>`:''}
       <input class="inp" id="pf-title" placeholder="제목">
       <textarea class="inp" id="pf-content" placeholder="내용을 입력하세요..."></textarea>
       <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -479,6 +482,11 @@ function showPromoForm(){
       </div>
     </div>
   </div>`;
+  // 전체 선택시 안내문 표시
+  document.getElementById('pf-club').addEventListener('change',function(){
+    const notice=document.getElementById('pf-all-notice');
+    if(notice) notice.style.display=this.value==='all'?'block':'none';
+  });
 }
 
 function submitPromo(){
@@ -486,7 +494,16 @@ function submitPromo(){
   const title=document.getElementById('pf-title').value.trim();
   const content=document.getElementById('pf-content').value.trim();
   if(!clubId||!title||!content)return alert('모든 항목을 입력해주세요.');
-  state.promos.push({id:uid(),clubId,authorName:state.user.name,title,content,createdAt:new Date().toISOString()});
+  if(clubId==='all'){
+    // 전체 동아리 각각에 게시
+    Object.keys(CLUBS).forEach(cid=>{
+      state.promos.push({id:uid(),clubId:cid,authorName:state.user.name,title,content,
+        isGlobal:true,createdAt:new Date().toISOString()});
+    });
+  } else {
+    state.promos.push({id:uid(),clubId,authorName:state.user.name,title,content,
+      isGlobal:false,createdAt:new Date().toISOString()});
+  }
   render();
 }
 
@@ -502,7 +519,7 @@ function renderClub(clubId){
   </div></div>`;
 
   const tab=state.subPage.clubTab||'board';
-  const tabs=[['board','게시판'],['schedule','일정'],['event','이벤트'],['attendance','출석'],['members','회원']];
+  const tabs=[[`board`,`${club.boardName||'게시판'}`],['schedule','일정'],['event','이벤트'],['attendance','출석'],['members','회원']];
   const tabHtml=`<div class="tabs">${tabs.map(([id,label])=>`<button class="tab ${tab===id?'active':''}" onclick="setSubPage('clubTab','${id}')">${label}</button>`).join('')}</div>`;
 
   let body='';
@@ -549,7 +566,7 @@ function renderClubBoard(clubId,club){
 
   return `
   <div class="card" style="margin-bottom:16px;border:1.5px solid ${club.color}25">
-    <textarea class="inp" id="post-content" placeholder="${club.name} 게시판에 글을 남겨보세요..." style="margin-bottom:10px;border-color:${club.color}25"></textarea>
+    <textarea class="inp" id="post-content" placeholder="${club.boardName||club.name} 게시판에 글을 남겨보세요..." style="margin-bottom:10px;border-color:${club.color}25"></textarea>
     <div style="display:flex;justify-content:space-between;align-items:center">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--muted)">
         <input type="checkbox" id="post-anon" style="accent-color:${club.color}"> 익명(비밀)으로 작성
