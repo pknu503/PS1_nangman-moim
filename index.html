@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>낭만모임 | 부경대 사회복지 전공동아리</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Nanum+Myeongjo:wght@400;700;800&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --pink:#F28B8B; --pink-l:#FADADD; --pink-s:#FFF5F5; --pink-m:#EF7878;
+  --hora:#9B8EC4; --myth:#D4864A; --theme:#4A7FC4;
+  --bg:#fff; --sur:#FFF8F8; --sur2:#FFF0F0;
+  --bdr:#F5DADA; --bdr2:#ECC5C5;
+  --txt:#2D1F1F; --muted:#9B7878; --light:#C4A0A0;
+  --red:#E85555; --green:#4A9B6A;
+  --r:12px; --rl:20px;
+  --sh:0 2px 12px rgba(242,139,139,.10);
+  --shl:0 8px 32px rgba(242,139,139,.16);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--sur2)}::-webkit-scrollbar-thumb{background:var(--pink-l);border-radius:3px}
+
+/* NAV */
+nav{background:#fff;border-bottom:1.5px solid var(--bdr);box-shadow:var(--sh);position:sticky;top:0;z-index:100}
+.nav-inner{max-width:1100px;margin:0 auto;padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:60px}
+.logo{cursor:pointer;display:flex;align-items:center;gap:10px}
+.logo-imgs{display:flex;gap:3px}
+.logo-img{width:22px;height:22px;border-radius:5px;overflow:hidden;border:1.5px solid #ddd;object-fit:cover}
+.logo-text{font-family:'Nanum Myeongjo',serif;font-size:16px;font-weight:800;color:var(--pink)}
+.logo-sub{font-size:9px;color:var(--light);margin-top:1px}
+.nav-links{display:flex;gap:2px}
+.nav-btn{padding:8px 13px;border-radius:8px;border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:13px;font-weight:500;font-family:'Noto Sans KR',sans-serif;transition:all .15s;display:flex;align-items:center;gap:5px}
+.nav-btn:hover{background:var(--pink-s);color:var(--pink)}
+.nav-btn.active{background:var(--pink-s);color:var(--pink);font-weight:700}
+.nav-user{display:flex;align-items:center;gap:10px}
+.user-badge{font-size:12px;color:var(--muted);font-weight:600;padding:4px 10px;background:var(--sur2);border-radius:20px;border:1px solid var(--bdr)}
+.mobile-nav{display:none;overflow-x:auto;gap:2px;padding:6px 12px;border-top:1px solid var(--bdr)}
+@media(max-width:768px){.nav-links{display:none!important}.mobile-nav{display:flex!important}.content{padding:16px!important}.g2,.g3{grid-template-columns:1fr!important}}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:10px 20px;border-radius:var(--r);font-family:'Noto Sans KR',sans-serif;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:all .2s}
+.btn-p{background:var(--pink);color:#fff;box-shadow:0 2px 8px rgba(242,139,139,.3)}
+.btn-p:hover{background:var(--pink-m);transform:translateY(-1px)}
+.btn-g{background:transparent;color:var(--muted);border:1.5px solid var(--bdr2)}
+.btn-g:hover{background:var(--pink-s);color:var(--txt)}
+.btn-d{background:rgba(232,85,85,.08);color:var(--red);border:1px solid rgba(232,85,85,.25)}
+.btn-d:hover{background:rgba(232,85,85,.16)}
+.btn-sm{padding:6px 14px;font-size:12px;border-radius:8px}
+
+/* INPUTS */
+.inp{width:100%;padding:12px 16px;background:var(--sur2);border:1.5px solid var(--bdr);border-radius:var(--r);color:var(--txt);font-family:'Noto Sans KR',sans-serif;font-size:14px;transition:border-color .2s,box-shadow .2s;outline:none}
+.inp:focus{border-color:var(--pink);box-shadow:0 0 0 3px rgba(242,139,139,.12)}
+.inp::placeholder{color:var(--light)}
+textarea.inp{resize:vertical;min-height:90px}
+.lbl{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;font-weight:600}
+select.inp{cursor:pointer}
+
+/* CARD */
+.card{background:var(--bg);border:1.5px solid var(--bdr);border-radius:var(--rl);padding:24px;box-shadow:var(--sh)}
+
+/* TABS */
+.tabs{display:flex;gap:4px;background:var(--sur2);padding:4px;border-radius:var(--r);margin-bottom:20px;border:1px solid var(--bdr)}
+.tab{flex:1;padding:9px;text-align:center;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;transition:all .2s;color:var(--muted);border:none;background:transparent;font-family:'Noto Sans KR',sans-serif}
+.tab.active{background:#fff;color:var(--pink);box-shadow:0 1px 4px rgba(242,139,139,.2)}
+
+/* LAYOUT */
+.page{min-height:calc(100vh - 60px);background:var(--sur)}
+.content{max-width:1100px;margin:0 auto;padding:28px 20px}
+.g2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.empty{text-align:center;padding:50px 20px;color:var(--muted);font-size:14px}
+.empty .ico{font-size:36px;margin-bottom:10px}
+.sec-title{font-size:18px;font-weight:700;margin-bottom:16px}
+.notice{background:var(--pink-s);border:1px solid var(--pink-l);border-radius:var(--r);padding:12px 16px;font-size:12px;color:var(--muted);line-height:1.8}
+.notice strong{color:var(--pink-m)}
+.post-card{background:var(--bg);border:1.5px solid var(--bdr);border-radius:var(--r);padding:16px;margin-bottom:10px;box-shadow:var(--sh);transition:box-shadow .2s}
+.post-card:hover{box-shadow:var(--shl)}
+
+/* AUTH */
+.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:40px 20px;background:linear-gradient(160deg,#fff 60%,#FFF0F0 100%)}
+.auth-box{width:100%;max-width:420px}
+.auth-logo{text-align:center;margin-bottom:28px}
+.auth-club-imgs{display:flex;justify-content:center;gap:10px;margin-bottom:16px}
+.auth-club-img{width:52px;height:52px;border-radius:14px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.auth-title{font-family:'Nanum Myeongjo',serif;font-size:26px;font-weight:800;color:var(--pink);margin-bottom:4px}
+.club-tag{display:inline-block;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;border:1.5px solid}
+
+/* HERO */
+.hero{background:linear-gradient(135deg,#FFF0F0 0%,#fff 60%);border-bottom:1.5px solid var(--bdr);padding:40px 20px 32px}
+.hero-inner{max-width:1100px;margin:0 auto}
+.hero-bar{border-top:3px solid var(--pink);border-bottom:1px solid var(--pink-l);padding:8px 0;margin-bottom:24px;display:flex;justify-content:space-between}
+.hero-title{font-family:'Nanum Myeongjo',serif;font-size:clamp(28px,5vw,46px);font-weight:800;line-height:1.15;margin-bottom:12px}
+.hero-flex{display:flex;align-items:flex-start;gap:32px;flex-wrap:wrap}
+.club-card-btn{background:#fff;border:2px solid #ddd;border-radius:16px;padding:16px;cursor:pointer;transition:all .2s;text-align:center;min-width:105px;display:flex;flex-direction:column;align-items:center;gap:8px}
+.club-card-img{width:60px;height:60px;border-radius:14px;overflow:hidden;border:2px solid #ddd}
+
+/* PILL */
+.pill{padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid}
+
+/* TABLE */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:10px 14px;color:var(--muted);border-bottom:2px solid var(--bdr);font-weight:600;background:var(--sur2)}
+td{padding:11px 14px;border-bottom:1px solid var(--bdr)}
+
+/* PROGRESS */
+.prog-bar{background:var(--sur2);border-radius:4px;height:7px;overflow:hidden;margin:6px 0}
+.prog-fill{height:100%;border-radius:4px;transition:width .5s}
+
+/* PWD toggle */
+.pw-wrap{position:relative}
+.pw-wrap .inp{padding-right:44px}
+.pw-eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<script>
+// ============ DATA ============
+const GITHUB_RAW = 'https://raw.githubusercontent.com/pknu503/nangman-moim/main';
+const CLUBS = {
+  hora:{id:'hora',name:'오라',en:'Hora',color:'#9B8EC4',emoji:'🕐',logo:`${GITHUB_RAW}/%EC%98%A4%EB%9D%BC.jpg`,desc:'시간을 함께하는 동아리'},
+  myth:{id:'myth',name:'클럽신화',en:'MYTH',color:'#D4864A',emoji:'🔥',logo:`${GITHUB_RAW}/%EC%8B%A0%ED%99%94.jpg`,desc:'신화를 만들어가는 동아리'},
+  theme:{id:'theme',name:'띰',en:'Theme',color:'#4A7FC4',emoji:'🔍',logo:`${GITHUB_RAW}/%EB%9D%BC.png`,desc:'주제를 탐구하는 동아리'},
+};
+// 띰 로고는 띰.png
+CLUBS.theme.logo = `${GITHUB_RAW}/%EB%9D%BC.png`;
+
+const ADMIN_ID='50325', ADMIN_PW='27341004';
+const YEARS=Array.from({length:41},(_,i)=>2010+i);
+
+function ld(k,d){try{const r=localStorage.getItem(k);return r?JSON.parse(r):d}catch{return d}}
+function sv(k,v){localStorage.setItem(k,JSON.stringify(v))}
+
+// State
+let state={
+  user: ld('nm_user',null),
+  isAdmin: ld('nm_admin',false),
+  members: ld('nm_members',[]),
+  posts: ld('nm_posts',[]),
+  schedules: ld('nm_schedules',[]),
+  events: ld('nm_events',[]),
+  attendance: ld('nm_attend',[]),
+  promos: ld('nm_promos',[]),
+  pwRequests: ld('nm_pwreq',[]),
+  page:'home',
+  subPage:{},
+};
+
+function save(){
+  sv('nm_user',state.user);sv('nm_admin',state.isAdmin);
+  sv('nm_members',state.members);sv('nm_posts',state.posts);
+  sv('nm_schedules',state.schedules);sv('nm_events',state.events);
+  sv('nm_attend',state.attendance);sv('nm_promos',state.promos);
+  sv('nm_pwreq',state.pwRequests);
+}
+
+// ============ HELPERS ============
+function logoImg(club,size=28,radius=7){
+  return `<div style="width:${size}px;height:${size}px;border-radius:${radius}px;overflow:hidden;border:1.5px solid ${club.color}40;flex-shrink:0;background:${club.color}15;display:flex;align-items:center;justify-content:center;">
+    <img src="${club.logo}" alt="${club.name}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none';this.parentNode.innerHTML='<span style=font-size:${Math.round(size*.5)}px>${club.emoji}</span>'">
+  </div>`;
+}
+function fmtDate(d){return new Date(d).toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'})}
+function fmtShort(d){return new Date(d).toLocaleDateString('ko-KR')}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2)}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function psMark(status){
+  const isGrad=status==='graduated';
+  return `<span style="font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;background:${isGrad?'#F28B8B':'#2E7EC7'};color:#fff;letter-spacing:0.5px;vertical-align:middle;flex-shrink:0">${isGrad?'PS0':'PS1'}</span>`;
+}
+function memberLabel(m){
+  return `${esc(m.name)}(${String(m.studentYear).slice(2)}) ${psMark(m.status)}`;
+}
+
+// ============ RENDER ENGINE ============
+function render(){
+  save();
+  if(!state.user){renderAuth();return;}
+  renderApp();
+}
+
+// ============ AUTH ============
+function renderAuth(){
+  const mode=state.authMode||'login';
+  document.body.innerHTML=`
+  <div class="auth-wrap">
+    <div class="auth-box">
+      <div class="auth-logo">
+        <div class="auth-club-imgs">
+          ${Object.values(CLUBS).map(c=>`<div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+            <div class="auth-club-img">${logoImg(c,52,14)}</div>
+            <span style="font-size:11px;font-weight:700;color:${c.color}">${c.name}</span>
+          </div>`).join('')}
+        </div>
+        <div class="auth-title">낭만모임</div>
+        <div style="color:var(--muted);font-size:13px">부경대 사회복지학 전공동아리 모이다</div>
+      </div>
+      <div class="tabs">
+        <button class="tab ${mode==='login'?'active':''}" onclick="state.authMode='login';render()">로그인</button>
+        <button class="tab ${mode==='register'?'active':''}" onclick="state.authMode='register';render()">신규 가입</button>
+      </div>
+      <div class="card">
+        ${mode==='login'?renderLogin():renderRegister()}
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderLogin(){
+  return `
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <div class="notice">
+      <strong>로그인 안내</strong><br>
+      • 일반 회원: 가입 시 등록한 <strong>이름</strong>과 <strong>8자리 숫자 비밀번호</strong><br>
+      • 관리자: 관리자 ID(<strong>${ADMIN_ID}</strong>)와 비밀번호로 로그인
+    </div>
+    <div><label class="lbl">이름 (또는 관리자 ID)</label>
+      <input class="inp" id="li-name" placeholder="이름 입력"></div>
+    <div><label class="lbl">비밀번호 (8자리 숫자)</label>
+      <div class="pw-wrap"><input class="inp" id="li-pw" type="password" placeholder="8자리 비밀번호" maxlength="8">
+      <button class="pw-eye" onclick="togglePw('li-pw',this)">👁️</button></div></div>
+    <div id="li-err" style="color:var(--red);font-size:13px;display:none;padding:8px 12px;background:#fff0f0;border-radius:8px"></div>
+    <button class="btn btn-p" style="width:100%;justify-content:center" onclick="doLogin()">로그인</button>
+  </div>`;
+}
+
+function renderRegister(){
+  return `
+  <div style="display:flex;flex-direction:column;gap:12px">
+    <div class="notice">
+      <strong>비밀번호 안내</strong><br>
+      비밀번호는 <strong>숫자 8자리</strong>로 설정해주세요.<br>예: 19991231 (생년월일 형식 추천)
+    </div>
+    <div><label class="lbl">이름</label><input class="inp" id="rg-name" placeholder="실명 입력"></div>
+    <div><label class="lbl">학번 (입학연도)</label>
+      <select class="inp" id="rg-year"><option value="">학번 선택</option>
+      ${YEARS.map(y=>`<option value="${y}">${y}학번</option>`).join('')}</select></div>
+    <div><label class="lbl">성별</label>
+      <select class="inp" id="rg-gender"><option value="female">여성</option><option value="male">남성</option><option value="other">기타</option></select></div>
+    <div><label class="lbl">재적 상태</label>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <label style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;cursor:pointer;border:2px solid var(--bdr);background:var(--sur2);flex:1;transition:all .15s" id="lbl-active" onclick="selectStatus('active')">
+          <input type="radio" name="rg-status" value="active" checked style="display:none">
+          <span style="font-size:18px">🎓</span>
+          <div><div style="font-size:13px;font-weight:700" id="st-active-txt">현역</div>
+          <div style="font-size:10px;color:var(--muted)">재학생 · 휴학생</div></div>
+          <span style="margin-left:auto;font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;background:#2E7EC7;color:#fff">PS1</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;cursor:pointer;border:2px solid var(--bdr);background:var(--sur2);flex:1;transition:all .15s" id="lbl-graduated" onclick="selectStatus('graduated')">
+          <input type="radio" name="rg-status" value="graduated" style="display:none">
+          <span style="font-size:18px">👨‍💼</span>
+          <div><div style="font-size:13px;font-weight:700">졸업생</div>
+          <div style="font-size:10px;color:var(--muted)">졸업</div></div>
+          <span style="margin-left:auto;font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;background:#F28B8B;color:#fff">PS0</span>
+        </label>
+      </div>
+    </div>
+    <div><label class="lbl">비밀번호 (8자리 숫자)</label>
+      <div class="pw-wrap"><input class="inp" id="rg-pw" type="password" placeholder="숫자 8자리" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">
+      <button class="pw-eye" onclick="togglePw('rg-pw',this)">👁️</button></div></div>
+    <div><label class="lbl">비밀번호 확인</label>
+      <div class="pw-wrap"><input class="inp" id="rg-pw2" type="password" placeholder="비밀번호 재입력" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">
+      <button class="pw-eye" onclick="togglePw('rg-pw2',this)">👁️</button></div></div>
+    <div><label class="lbl">가입 동아리 (복수 선택 가능)</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px" id="club-sel">
+        ${Object.values(CLUBS).map(c=>`
+        <label style="display:flex;align-items:center;justify-content:center;gap:7px;padding:8px 13px;border-radius:10px;cursor:pointer;border:2px solid var(--bdr);background:var(--sur2);transition:all .15s;flex:1;min-width:85px;text-align:center" id="lbl-${c.id}" onclick="toggleClubSel('${c.id}')">
+          <input type="checkbox" id="chk-${c.id}" style="display:none">
+          ${logoImg(c,22,5)}
+          <span style="font-size:12px;font-weight:600;color:var(--muted)" id="clbtxt-${c.id}">${c.name}</span>
+        </label>`).join('')}
+      </div>
+    </div>
+    <div id="rg-err" style="color:var(--red);font-size:13px;display:none;padding:8px 12px;background:#fff0f0;border-radius:8px"></div>
+    <div id="rg-ok" style="color:var(--green);font-size:13px;display:none;padding:8px 12px;background:#f0fff6;border-radius:8px"></div>
+    <button class="btn btn-p" style="width:100%;justify-content:center" onclick="doRegister()">가입하기</button>
+  </div>`;
+}
+
+function togglePw(id,btn){
+  const el=document.getElementById(id);
+  if(el.type==='password'){el.type='text';btn.textContent='🙈';}
+  else{el.type='password';btn.textContent='👁️';}
+}
+
+let _selClubs=[];
+let _selStatus='active';
+function selectStatus(val){
+  _selStatus=val;
+  ['active','graduated'].forEach(s=>{
+    const lbl=document.getElementById('lbl-'+s);
+    if(!lbl)return;
+    const sel=s===val;
+    lbl.style.borderColor=sel?(s==='graduated'?'#F28B8B':'#2E7EC7'):'var(--bdr)';
+    lbl.style.background=sel?(s==='graduated'?'#fff0f0':'#f0f7ff'):'var(--sur2)';
+  });
+}
+function toggleClubSel(id){
+  const idx=_selClubs.indexOf(id);
+  if(idx>=0)_selClubs.splice(idx,1);else _selClubs.push(id);
+  Object.values(CLUBS).forEach(c=>{
+    const lbl=document.getElementById('lbl-'+c.id);
+    const txt=document.getElementById('clbtxt-'+c.id);
+    if(!lbl)return;
+    const sel=_selClubs.includes(c.id);
+    lbl.style.borderColor=sel?c.color:'var(--bdr)';
+    lbl.style.background=sel?c.color+'15':'var(--sur2)';
+    txt.style.color=sel?c.color:'var(--muted)';
+  });
+}
+
+function showErr(id,msg){const el=document.getElementById(id);if(el){el.textContent=msg;el.style.display='block';}}
+function hideErr(id){const el=document.getElementById(id);if(el)el.style.display='none';}
+
+function doLogin(){
+  hideErr('li-err');
+  const name=document.getElementById('li-name').value.trim();
+  const pw=document.getElementById('li-pw').value.trim();
+  if(!name||!pw){showErr('li-err','이름과 비밀번호를 입력해주세요.');return;}
+  if(name===ADMIN_ID&&pw===ADMIN_PW){
+    state.user={id:'admin',name:'관리자',studentYear:'관리자',clubs:Object.keys(CLUBS),gender:'-'};
+    state.isAdmin=true;state.page='home';render();return;
+  }
+  const m=state.members.find(x=>x.name===name&&x.password===pw);
+  if(!m){showErr('li-err','이름 또는 비밀번호가 일치하지 않습니다.');return;}
+  state.user=m;state.isAdmin=false;state.page='home';render();
+}
+
+function doRegister(){
+  hideErr('rg-err');hideErr('rg-ok');
+  const name=document.getElementById('rg-name').value.trim();
+  const year=document.getElementById('rg-year').value;
+  const gender=document.getElementById('rg-gender').value;
+  const pw=document.getElementById('rg-pw').value;
+  const pw2=document.getElementById('rg-pw2').value;
+  if(!name)return showErr('rg-err','이름을 입력해주세요.');
+  if(!year)return showErr('rg-err','학번을 선택해주세요.');
+  if(!/^\d{8}$/.test(pw))return showErr('rg-err','비밀번호는 8자리 숫자여야 합니다.');
+  if(pw!==pw2)return showErr('rg-err','비밀번호가 일치하지 않습니다.');
+  if(_selClubs.length===0)return showErr('rg-err','최소 하나의 동아리를 선택해주세요.');
+  if(state.members.find(m=>m.name===name&&m.studentYear===year))return showErr('rg-err','이미 등록된 이름+학번 조합입니다.');
+  const m={id:uid(),name,studentYear:year,gender,clubs:[..._selClubs],password:pw,status:_selStatus,joinedAt:new Date().toISOString()};
+  state.members.push(m);state.user=m;state.isAdmin=false;state.page='home';
+  _selClubs=[];_selStatus='active';render();
+}
+
+// ============ APP SHELL ============
+function renderApp(){
+  const pg=state.page;
+  const items=state.isAdmin
+    ?[['home','홈'],['integrated','통합현황'],['hora','오라'],['myth','클럽신화'],['theme','띰'],['admin','⚙️ 관리자']]
+    :[['home','홈'],['integrated','통합현황'],['hora','오라'],['myth','클럽신화'],['theme','띰'],['profile','내 정보']];
+
+  const navBtns=items.map(([id,label])=>{
+    const c=CLUBS[id];
+    return `<button class="nav-btn ${pg===id?'active':''}" onclick="goPage('${id}')">
+      ${c?`<div style="width:16px;height:16px;border-radius:4px;overflow:hidden">${logoImg(c,16,4)}</div>`:''}
+      ${label}</button>`;
+  }).join('');
+
+  document.body.innerHTML=`
+  <nav>
+    <div class="nav-inner">
+      <div class="logo" onclick="goPage('home')">
+        <div class="logo-imgs">${Object.values(CLUBS).map(c=>logoImg(c,22,5)).join('')}</div>
+        <div><div class="logo-text">낭만모임</div><div class="logo-sub">부경대 사회복지 전공동아리</div></div>
+      </div>
+      <div class="nav-links">${navBtns}</div>
+      <div class="nav-user">
+        <div class="user-badge">${state.isAdmin?'👑 관리자':state.user.name}</div>
+        <button class="btn btn-g btn-sm" onclick="doLogout()">로그아웃</button>
+      </div>
+    </div>
+    <div class="mobile-nav">${items.map(([id,label])=>`<button class="nav-btn ${pg===id?'active':''}" onclick="goPage('${id}')" style="font-size:12px;white-space:nowrap">${label}</button>`).join('')}</div>
+  </nav>
+  <div id="main-content"></div>`;
+
+  const mc=document.getElementById('main-content');
+  if(pg==='home')mc.innerHTML=renderHome();
+  else if(pg==='integrated')mc.innerHTML=renderIntegrated();
+  else if(pg==='hora'||pg==='myth'||pg==='theme')mc.innerHTML=renderClub(pg);
+  else if(pg==='admin')mc.innerHTML=renderAdmin();
+  else if(pg==='profile')mc.innerHTML=renderProfile();
+}
+
+function goPage(id){state.page=id;state.subPage={};render();}
+function doLogout(){state.user=null;state.isAdmin=false;state.authMode='login';render();}
+
+// ============ HOME ============
+function renderHome(){
+  const myClubs=state.user.clubs||[];
+  const promos=state.promos;
+  const filter=state.homeFilter||'all';
+  const filtered=filter==='all'?promos:promos.filter(p=>p.clubId===filter);
+  const canPost=state.isAdmin||myClubs.length>0;
+
+  const clubCards=Object.values(CLUBS).map(c=>{
+    const cnt=state.members.filter(m=>m.clubs?.includes(c.id)).length;
+    return `<button class="club-card-btn" onclick="goPage('${c.id}')"
+      style="border-color:${c.color}30;box-shadow:0 2px 12px ${c.color}20"
+      onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px ${c.color}30'"
+      onmouseout="this.style.transform='';this.style.boxShadow='0 2px 12px ${c.color}20'">
+      <div class="club-card-img" style="border-color:${c.color}30">${logoImg(c,60,12)}</div>
+      <div style="color:${c.color};font-weight:700;font-size:13px">${c.name}</div>
+      <div style="background:${c.color}15;color:${c.color};border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600">${cnt}명</div>
+    </button>`;
+  }).join('');
+
+  const filterBtns=[{id:'all',name:'전체',color:'#F28B8B'},...Object.values(CLUBS)].map(c=>`
+    <button onclick="state.homeFilter='${c.id}';render()" style="padding:6px 16px;border-radius:20px;cursor:pointer;
+      background:${filter===c.id?c.color+'15':'#fff'};color:${filter===c.id?c.color:'var(--muted)'};
+      font-weight:${filter===c.id?700:400};font-size:13px;font-family:'Noto Sans KR',sans-serif;
+      border:1.5px solid ${filter===c.id?c.color:'var(--bdr)'};transition:all .15s">${c.name||'전체 보기'}</button>`).join('');
+
+  const promoCards=[...filtered].reverse().map(p=>{
+    const c=CLUBS[p.clubId];
+    return `<div class="card" style="border-left:4px solid ${c?.color};padding:18px 20px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            ${logoImg(c,24,6)}
+            <span style="font-size:11px;font-weight:700;color:${c?.color};background:${c?.color}15;padding:2px 10px;border-radius:20px">${c?.name}</span>
+          </div>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:6px">${esc(p.title)}</h3>
+          <p style="color:var(--muted);font-size:13px;line-height:1.7">${esc(p.content)}</p>
+          <p style="font-size:11px;color:var(--light);margin-top:8px">${esc(p.authorName)} · ${fmtShort(p.createdAt)}</p>
+        </div>
+        ${state.isAdmin?`<button class="btn btn-d btn-sm" style="margin-left:12px;flex-shrink:0" onclick="deletePromo('${p.id}')">삭제</button>`:''}
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+  <div class="hero">
+    <div class="hero-inner">
+      <div class="hero-bar">
+        <div style="font-size:11px;color:var(--muted)">국립부경대학교 사회복지학과 전공동아리</div>
+        <div style="font-size:11px;color:var(--pink);font-family:'Nanum Myeongjo',serif">낭만모임 · PS1 Nangman Moim</div>
+      </div>
+      <div class="hero-flex">
+        <div style="flex:1;min-width:240px">
+          <h1 class="hero-title">낭만 있는<br><span style="color:var(--pink)">사복 이야기</span></h1>
+          <p style="color:var(--muted);font-size:13px;line-height:1.8;margin-bottom:16px">사회복지학전공은 새로운 시대 변화에 대응하는<br>다양한 소통 네트워크를 지향합니다.</p>
+          ${!state.isAdmin?`<div style="display:flex;gap:6px;flex-wrap:wrap">${(state.user.clubs||[]).map(id=>`<span class="club-tag" style="color:${CLUBS[id]?.color};border-color:${CLUBS[id]?.color};background:${CLUBS[id]?.color}12">${CLUBS[id]?.name}</span>`).join('')}</div>`:''}
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">${clubCards}</div>
+      </div>
+    </div>
+  </div>
+  <div class="content">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div><div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+        <div style="width:4px;height:20px;background:var(--pink);border-radius:2px"></div>
+        <h2 style="font-size:19px;font-weight:800;font-family:'Nanum Myeongjo',serif">홍보 게시판</h2>
+      </div><p style="font-size:12px;color:var(--muted);padding-left:12px">각 동아리의 소식을 확인하세요</p></div>
+      ${canPost?`<button class="btn btn-p btn-sm" onclick="showPromoForm()">+ 홍보글 작성</button>`:''}
+    </div>
+    <div id="promo-form-area"></div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">${filterBtns}</div>
+    ${filtered.length===0?`<div class="empty"><div class="ico">📭</div><p>등록된 홍보글이 없습니다.</p></div>`:promoCards}
+  </div>`;
+}
+
+function showPromoForm(){
+  const myClubs=state.user.clubs||[];
+  const clubOpts=(state.isAdmin?Object.values(CLUBS):Object.values(CLUBS).filter(c=>myClubs.includes(c.id)))
+    .map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  document.getElementById('promo-form-area').innerHTML=`
+  <div class="card" style="margin-bottom:16px;border:1.5px solid var(--pink-l)">
+    <h3 style="font-size:14px;font-weight:700;margin-bottom:14px">홍보글 작성</h3>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <select class="inp" id="pf-club"><option value="">동아리 선택</option>${clubOpts}</select>
+      <input class="inp" id="pf-title" placeholder="제목">
+      <textarea class="inp" id="pf-content" placeholder="내용을 입력하세요..."></textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-g btn-sm" onclick="document.getElementById('promo-form-area').innerHTML=''">취소</button>
+        <button class="btn btn-p btn-sm" onclick="submitPromo()">등록</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function submitPromo(){
+  const clubId=document.getElementById('pf-club').value;
+  const title=document.getElementById('pf-title').value.trim();
+  const content=document.getElementById('pf-content').value.trim();
+  if(!clubId||!title||!content)return alert('모든 항목을 입력해주세요.');
+  state.promos.push({id:uid(),clubId,authorName:state.user.name,title,content,createdAt:new Date().toISOString()});
+  render();
+}
+
+function deletePromo(id){if(confirm('삭제할까요?')){state.promos=state.promos.filter(p=>p.id!==id);render();}}
+
+// ============ CLUB ============
+function renderClub(clubId){
+  const club=CLUBS[clubId];
+  const myClubs=state.user.clubs||[];
+  const isMember=state.isAdmin||myClubs.includes(clubId);
+  if(!isMember)return `<div class="content"><div class="empty" style="padding-top:80px">
+    ${logoImg(club,80,20)}<br><br><h2>${club.name}</h2><p style="margin-top:8px;color:var(--muted)">이 동아리의 회원이 아닙니다.</p>
+  </div></div>`;
+
+  const tab=state.subPage.clubTab||'board';
+  const tabs=[['board','게시판'],['schedule','일정'],['event','이벤트'],['attendance','출석'],['members','회원']];
+  const tabHtml=`<div class="tabs">${tabs.map(([id,label])=>`<button class="tab ${tab===id?'active':''}" onclick="setSubPage('clubTab','${id}')">${label}</button>`).join('')}</div>`;
+
+  let body='';
+  if(tab==='board')body=renderClubBoard(clubId,club);
+  else if(tab==='schedule')body=renderClubSchedule(clubId,club);
+  else if(tab==='event')body=renderClubEvent(clubId,club);
+  else if(tab==='attendance')body=renderClubAttend(clubId,club);
+  else if(tab==='members')body=renderClubMembers(clubId,club);
+
+  return `
+  <div style="background:linear-gradient(135deg,${club.color}10 0%,#fff 70%);border-bottom:1.5px solid var(--bdr);padding:24px 20px 18px">
+    <div style="max-width:1100px;margin:0 auto;display:flex;align-items:center;gap:16px">
+      <div style="width:66px;height:66px;border-radius:18px;overflow:hidden;border:3px solid ${club.color}40;box-shadow:0 4px 16px ${club.color}25">${logoImg(club,66,15)}</div>
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <h1 style="font-size:21px;font-weight:900;font-family:'Nanum Myeongjo',serif">${club.name}</h1>
+          <span style="font-size:11px;color:${club.color};background:${club.color}15;padding:2px 10px;border-radius:20px;font-weight:600">${club.en}</span>
+        </div>
+        <p style="color:var(--muted);font-size:13px">${club.desc} · 회원 ${state.members.filter(m=>m.clubs?.includes(clubId)).length}명</p>
+      </div>
+    </div>
+  </div>
+  <div class="content">${tabHtml}${body}</div>`;
+}
+
+function setSubPage(key,val){state.subPage[key]=val;render();}
+
+function renderClubBoard(clubId,club){
+  const posts=state.posts.filter(p=>p.clubId===clubId);
+  const postCards=[...posts].reverse().map(p=>`
+  <div class="post-card">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <div style="width:30px;height:30px;border-radius:50%;background:${p.isAnon?'var(--sur2)':club.color+'20'};border:1.5px solid ${club.color}30;display:flex;align-items:center;justify-content:center;font-weight:700;color:${club.color};font-size:13px">${p.isAnon?'?':esc(p.authorName[0])}</div>
+      <span style="font-size:13px;font-weight:600">${p.isAnon?'익명':esc(p.authorName)}</span>
+      ${p.isAnon?`<span style="font-size:10px;color:var(--muted);background:var(--sur2);padding:2px 8px;border-radius:10px;border:1px solid var(--bdr)">비밀글</span>`:''}
+      <span style="font-size:11px;color:var(--light);margin-left:auto">${fmtShort(p.createdAt)}</span>
+    </div>
+    <p style="font-size:14px;line-height:1.7;color:var(--txt)">${esc(p.content)}</p>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--bdr)">
+      <button onclick="likePost('${p.id}')" style="background:none;border:none;cursor:pointer;color:var(--pink);font-size:13px;font-family:'Noto Sans KR',sans-serif">❤️ ${p.likes||0}</button>
+      ${(state.isAdmin||p.authorId===state.user.id)?`<button class="btn btn-d btn-sm" onclick="deletePost('${p.id}')">삭제</button>`:''}
+    </div>
+  </div>`).join('');
+
+  return `
+  <div class="card" style="margin-bottom:16px;border:1.5px solid ${club.color}25">
+    <textarea class="inp" id="post-content" placeholder="${club.name} 게시판에 글을 남겨보세요..." style="margin-bottom:10px;border-color:${club.color}25"></textarea>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--muted)">
+        <input type="checkbox" id="post-anon" style="accent-color:${club.color}"> 익명(비밀)으로 작성
+      </label>
+      <button style="padding:8px 18px;background:${club.color};color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-family:'Noto Sans KR',sans-serif;font-size:13px" onclick="submitPost('${clubId}')">등록</button>
+    </div>
+  </div>
+  ${posts.length===0?`<div class="empty"><div class="ico">💬</div><p>첫 번째 글을 남겨보세요!</p></div>`:postCards}`;
+}
+
+function submitPost(clubId){
+  const content=document.getElementById('post-content').value.trim();
+  const isAnon=document.getElementById('post-anon').checked;
+  if(!content)return;
+  state.posts.push({id:uid(),clubId,authorId:state.user.id,authorName:isAnon?'익명':state.user.name,isAnon,content,likes:0,createdAt:new Date().toISOString()});
+  render();
+}
+function deletePost(id){if(confirm('삭제할까요?')){state.posts=state.posts.filter(p=>p.id!==id);render();}}
+function likePost(id){const p=state.posts.find(x=>x.id===id);if(p)p.likes=(p.likes||0)+1;render();}
+
+function renderClubSchedule(clubId,club){
+  const scheds=state.schedules.filter(s=>s.clubId===clubId);
+  const types=[['monthly','📆 월별 일정'],['weekly','📋 주별 일정'],['other','📌 기타']];
+  const formHtml=state.isAdmin?`
+  <div class="card" style="margin-bottom:16px" id="sched-form" style="display:none">
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <input class="inp" id="sf-title" placeholder="일정 제목">
+      <input class="inp" type="date" id="sf-date">
+      <select class="inp" id="sf-type"><option value="monthly">월별 일정</option><option value="weekly">주별 일정</option><option value="other">기타</option></select>
+      <input class="inp" id="sf-week" placeholder="주차 예: 1주차">
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-g btn-sm" onclick="document.getElementById('sched-form').style.display='none'">취소</button>
+        <button class="btn btn-p btn-sm" onclick="submitSched('${clubId}')">추가</button>
+      </div>
+    </div>
+  </div>`:'';
+
+  const lists=types.map(([type,label])=>{
+    const items=scheds.filter(s=>s.type===type);
+    return `<div style="margin-bottom:22px">
+      <h3 style="font-size:14px;font-weight:700;color:var(--muted);margin-bottom:10px">${label}</h3>
+      ${items.length===0?`<p style="color:var(--light);font-size:13px;padding:8px 0">일정이 없습니다.</p>`:
+      items.map(s=>`<div class="card" style="padding:12px 16px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:center;border-left:3px solid ${club.color}">
+        <div><span style="font-weight:600;font-size:14px">${esc(s.title)}</span>${s.week?`<span style="font-size:11px;color:${club.color};margin-left:8px">${esc(s.week)}</span>`:''}
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">${fmtDate(s.date)}</div></div>
+        ${state.isAdmin?`<button class="btn btn-d btn-sm" onclick="deleteSched('${s.id}')">삭제</button>`:''}
+      </div>`).join('')}
+    </div>`;
+  }).join('');
+
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <h2 class="sec-title" style="margin:0">일정 관리</h2>
+    ${state.isAdmin?`<button class="btn btn-p btn-sm" onclick="document.getElementById('sched-form').style.display='block'">+ 일정 추가</button>`:''}
+  </div>
+  ${formHtml}${lists}`;
+}
+
+function submitSched(clubId){
+  const title=document.getElementById('sf-title').value.trim();
+  const date=document.getElementById('sf-date').value;
+  const type=document.getElementById('sf-type').value;
+  const week=document.getElementById('sf-week').value.trim();
+  if(!title||!date)return alert('제목과 날짜를 입력해주세요.');
+  state.schedules.push({id:uid(),clubId,title,date,type,week,createdAt:new Date().toISOString()});
+  render();
+}
+function deleteSched(id){if(confirm('삭제할까요?')){state.schedules=state.schedules.filter(s=>s.id!==id);render();}}
+
+function renderClubEvent(clubId,club){
+  const events=state.events.filter(e=>e.clubId===clubId);
+  const formHtml=state.isAdmin?`
+  <div class="card" style="margin-bottom:16px" id="ev-form" style="display:none">
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <input class="inp" id="ef-title" placeholder="이벤트 제목">
+      <input class="inp" type="date" id="ef-date">
+      <textarea class="inp" id="ef-desc" placeholder="이벤트 설명" style="min-height:70px"></textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-g btn-sm" onclick="document.getElementById('ev-form').style.display='none'">취소</button>
+        <button class="btn btn-p btn-sm" onclick="submitEvent('${clubId}')">추가</button>
+      </div>
+    </div>
+  </div>`:'';
+
+  const cards=[...events].reverse().map(ev=>`
+  <div class="card" style="border-left:4px solid ${club.color};padding:16px 20px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between">
+      <div>
+        <div style="font-size:12px;color:${club.color};font-weight:700;margin-bottom:4px">${fmtDate(ev.date)}</div>
+        <h3 style="font-size:15px;font-weight:700">${esc(ev.title)}</h3>
+        ${ev.description?`<p style="color:var(--muted);font-size:13px;margin-top:6px;line-height:1.6">${esc(ev.description)}</p>`:''}
+      </div>
+      ${state.isAdmin?`<button class="btn btn-d btn-sm" onclick="deleteEvent('${ev.id}')">삭제</button>`:''}
+    </div>
+  </div>`).join('');
+
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <h2 class="sec-title" style="margin:0">이벤트</h2>
+    ${state.isAdmin?`<button class="btn btn-p btn-sm" onclick="document.getElementById('ev-form').style.display='block'">+ 이벤트 추가</button>`:''}
+  </div>
+  ${formHtml}
+  ${events.length===0?`<div class="empty"><div class="ico">🎊</div><p>등록된 이벤트가 없습니다.</p></div>`:cards}`;
+}
+
+function submitEvent(clubId){
+  const title=document.getElementById('ef-title').value.trim();
+  const date=document.getElementById('ef-date').value;
+  const description=document.getElementById('ef-desc').value.trim();
+  if(!title||!date)return alert('제목과 날짜를 입력해주세요.');
+  state.events.push({id:uid(),clubId,title,date,description,createdAt:new Date().toISOString()});
+  render();
+}
+function deleteEvent(id){if(confirm('삭제할까요?')){state.events=state.events.filter(e=>e.id!==id);render();}}
+
+function renderClubAttend(clubId,club){
+  const clubMembers=state.members.filter(m=>m.clubs?.includes(clubId));
+  if(!state.isAdmin){
+    const myR=state.attendance.filter(a=>a.clubId===clubId&&a.memberId===state.user.id);
+    const present=myR.filter(r=>r.status==='present').length;
+    const late=myR.filter(r=>r.status==='late').length;
+    const absent=myR.filter(r=>r.status==='absent').length;
+    const total=myR.length;
+    const rate=total>0?Math.round((present/total)*100):0;
+    return `<div class="card" style="border-top:3px solid ${club.color}">
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:16px">내 출석 현황</h3>
+      <div style="display:flex;gap:24px;justify-content:center;margin-bottom:16px">
+        ${[['출석',present,'#4A9B6A'],['지각',late,'#D4864A'],['결석',absent,'#E85555']].map(([l,v,c])=>`<div style="text-align:center"><div style="font-size:28px;font-weight:900;color:${c}">${v}</div><div style="font-size:12px;color:var(--muted)">${l}</div></div>`).join('')}
+      </div>
+      <div class="prog-bar"><div class="prog-fill" style="width:${rate}%;background:${club.color}"></div></div>
+      <p style="font-size:13px;color:var(--muted);text-align:center">출석률 ${rate}% (${total}회 중 ${present}회)</p>
+    </div>`;
+  }
+
+  const today=new Date().toISOString().split('T')[0];
+  const dateVal=state.attendDate||today;
+  const getStatus=(memberId)=>{
+    const key=`${clubId}_${memberId}_${dateVal}`;
+    return state.attendance.find(a=>a.key===key)?.status||null;
+  };
+  const statusColor={present:'#4A9B6A',late:'#D4864A',absent:'#E85555'};
+  const rows=clubMembers.map(m=>{
+    const s=getStatus(m.id);
+    return `<div class="card" style="padding:12px 18px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:34px;height:34px;border-radius:10px;background:${club.color}15;border:1.5px solid ${club.color}40;display:flex;align-items:center;justify-content:center;font-weight:800;color:${club.color}">${esc(m.name[0])}</div>
+        <div><div style="font-weight:600;font-size:14px;display:flex;align-items:center;gap:5px">${esc(m.name)}(${String(m.studentYear).slice(2)}) ${psMark(m.status)}</div><div style="font-size:12px;color:var(--muted)">${m.studentYear}학번 · ${m.status==='graduated'?'졸업생':'현역'}</div></div>
+      </div>
+      <div style="display:flex;gap:5px">
+        ${[['present','출석'],['late','지각'],['absent','결석']].map(([st,label])=>`
+        <button onclick="markAttend('${clubId}','${m.id}','${dateVal}','${st}')"
+          style="padding:5px 11px;border-radius:7px;border:1px solid ${s===st?statusColor[st]:'var(--bdr)'};cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-size:12px;font-weight:600;background:${s===st?statusColor[st]:'var(--sur2)'};color:${s===st?'#fff':'var(--muted)'}">${label}</button>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<h2 class="sec-title">출석 관리</h2>
+  <div style="margin-bottom:16px;display:flex;align-items:center;gap:12px">
+    <label class="lbl" style="margin:0;white-space:nowrap">날짜:</label>
+    <input class="inp" type="date" value="${dateVal}" onchange="state.attendDate=this.value;render()" style="width:auto">
+  </div>
+  ${clubMembers.length===0?`<div class="empty"><div class="ico">👥</div><p>회원이 없습니다.</p></div>`:rows}`;
+}
+
+function markAttend(clubId,memberId,date,status){
+  const key=`${clubId}_${memberId}_${date}`;
+  state.attendance=state.attendance.filter(a=>a.key!==key);
+  state.attendance.push({key,clubId,memberId,date,status});
+  render();
+}
+
+function renderClubMembers(clubId,club){
+  const members=state.members.filter(m=>m.clubs?.includes(clubId));
+  return `<h2 class="sec-title">동아리 회원 (${members.length}명)</h2>
+  ${members.length===0?`<div class="empty"><div class="ico">👤</div><p>가입된 회원이 없습니다.</p></div>`:`
+  <div class="g2">${members.map(m=>`
+    <div class="card" style="padding:16px 20px;display:flex;align-items:center;gap:14px">
+      <div style="width:44px;height:44px;border-radius:14px;background:${club.color}15;border:2px solid ${club.color}40;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:${club.color}">${esc(m.name[0])}</div>
+      <div><div style="font-weight:700;font-size:14px;display:flex;align-items:center;gap:5px">${esc(m.name)}(${String(m.studentYear).slice(2)}) ${psMark(m.status)}</div>
+      <div style="font-size:12px;color:var(--muted)">${m.studentYear}학번 · ${m.gender==='male'?'남':m.gender==='female'?'여':'기타'} · ${m.status==='graduated'?'졸업생':'현역'}</div>
+      <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">${(m.clubs||[]).map(c=>`<span style="padding:1px 7px;border-radius:10px;background:${CLUBS[c]?.color}15;color:${CLUBS[c]?.color};font-size:10px;font-weight:700">${CLUBS[c]?.name}</span>`).join('')}</div>
+      </div>
+    </div>`).join('')}</div>`}`;
+}
+
+// ============ INTEGRATED ============
+function renderIntegrated(){
+  const stats=Object.values(CLUBS).map(club=>{
+    const cm=state.members.filter(m=>m.clubs?.includes(club.id));
+    const male=cm.filter(m=>m.gender==='male').length;
+    const female=cm.filter(m=>m.gender==='female').length;
+    const posts=state.posts.filter(p=>p.clubId===club.id).length;
+    const scheds=state.schedules.filter(s=>s.clubId===club.id).length;
+    const evts=state.events.filter(e=>e.clubId===club.id).length;
+    const ar=state.attendance.filter(a=>a.clubId===club.id);
+    const present=ar.filter(a=>a.status==='present').length;
+    const late=ar.filter(a=>a.status==='late').length;
+    const absent=ar.filter(a=>a.status==='absent').length;
+    const total=ar.length;
+    const rate=total>0?Math.round((present/total)*100):0;
+    return{...club,members:cm,memberCount:cm.length,male,female,posts,scheds,evts,present,late,absent,total,rate};
+  });
+
+  const tab=state.subPage.intTab||'overview';
+  const tabs=[['overview','📊 전체 현황'],['attendance','✅ 출석'],['compare','⚖️ 비교'],['members','👥 전체 회원']];
+  const tabHtml=`<div class="tabs">${tabs.map(([id,label])=>`<button class="tab ${tab===id?'active':''}" onclick="setSubPage('intTab','${id}')">${label}</button>`).join('')}</div>`;
+
+  const totalM=state.members.length;
+  const totalP=state.posts.length;
+  const totalS=state.schedules.length+state.events.length;
+
+  const summaryCards=`<div class="g3" style="margin-bottom:20px">
+    ${[['👥','전체 회원',totalM,'명','var(--pink)'],['📝','전체 게시글',totalP,'개','var(--hora)'],['📅','일정·이벤트',totalS,'건','var(--theme)']].map(([ico,label,val,unit,col])=>`
+    <div class="card" style="display:flex;align-items:center;gap:14px;padding:18px 20px">
+      <div style="width:46px;height:46px;border-radius:13px;background:${col}15;border:1.5px solid ${col}30;display:flex;align-items:center;justify-content:center;font-size:20px">${ico}</div>
+      <div><div style="font-size:26px;font-weight:900;color:${col};line-height:1">${val}<span style="font-size:13px;margin-left:2px">${unit}</span></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:3px">${label}</div></div>
+    </div>`).join('')}
+  </div>`;
+
+  const clubCards=`<div class="g3" style="margin-bottom:20px">
+    ${stats.map(c=>`<div class="card" style="border-top:3px solid ${c.color};padding:18px 20px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:10px">${logoImg(c,34,9)}<div><div style="font-weight:700;font-size:14px">${c.name}</div><div style="font-size:11px;color:var(--muted)">${c.en}</div></div></div>
+        <div style="text-align:right"><div style="font-size:26px;font-weight:900;color:${c.color}">${c.memberCount}</div><div style="font-size:10px;color:var(--muted)">회원</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap">
+        <span>남 ${c.male} · 여 ${c.female}</span><span>게시글 ${c.posts}</span><span>출석률 ${c.rate}%</span>
+      </div>
+      <div class="prog-bar" style="margin-top:8px"><div class="prog-fill" style="width:${totalM>0?Math.round((c.memberCount/totalM)*100):0}%;background:${c.color}"></div></div>
+      <div style="font-size:10px;color:var(--light);margin-top:3px">전체 중 ${totalM>0?Math.round((c.memberCount/totalM)*100):0}%</div>
+    </div>`).join('')}
+  </div>`;
+
+  let tabBody='';
+  if(tab==='overview'){
+    tabBody=`
+    <div class="g2" style="margin-bottom:16px">
+      <div class="card">
+        <h3 style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:12px">동아리별 회원 수</h3>
+        ${stats.map(c=>`<div style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="display:flex;align-items:center;gap:6px">${logoImg(c,18,4)}<span style="font-size:13px;font-weight:600">${c.name}</span></div>
+            <span style="font-size:13px;font-weight:700;color:${c.color}">${c.memberCount}명</span>
+          </div>
+          <div class="prog-bar"><div class="prog-fill" style="width:${totalM>0?(c.memberCount/totalM)*100:0}%;background:${c.color}"></div></div>
+        </div>`).join('')}
+      </div>
+      <div class="card">
+        <h3 style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:12px">성별 분포 (전체)</h3>
+        ${(()=>{
+          const f=state.members.filter(m=>m.gender==='female').length;
+          const m2=state.members.filter(m=>m.gender==='male').length;
+          const o=state.members.filter(m=>m.gender==='other').length;
+          const t=f+m2+o||1;
+          return [['여성',f,'var(--pink)'],['남성',m2,'var(--hora)'],['기타',o,'var(--theme)']].map(([l,v,c])=>`
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+              <span style="font-size:13px;font-weight:600">${l}</span>
+              <span style="font-size:13px;font-weight:700;color:${c}">${v}명 (${Math.round(v/t*100)}%)</span>
+            </div>
+            <div class="prog-bar"><div class="prog-fill" style="width:${(v/t)*100}%;background:${c}"></div></div>
+          </div>`).join('');
+        })()}
+      </div>
+    </div>
+    <div class="card">
+      <h3 style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:14px">동아리별 활동량</h3>
+      ${stats.map(c=>`<div style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">${logoImg(c,20,5)}<span style="font-size:13px;font-weight:700;color:${c.color}">${c.name}</span></div>
+        <div style="display:flex;gap:10px;font-size:12px;color:var(--muted)">
+          <span style="background:var(--pink)15;color:var(--pink);padding:2px 10px;border-radius:10px;font-weight:600">게시글 ${c.posts}</span>
+          <span style="background:var(--hora)15;color:var(--hora);padding:2px 10px;border-radius:10px;font-weight:600">일정 ${c.scheds}</span>
+          <span style="background:var(--theme)15;color:var(--theme);padding:2px 10px;border-radius:10px;font-weight:600">이벤트 ${c.evts}</span>
+        </div>
+      </div>`).join('')}
+    </div>`;
+  } else if(tab==='attendance'){
+    tabBody=`<div class="g3">
+      ${stats.map(c=>`<div class="card" style="border-top:3px solid ${c.color}">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">${logoImg(c,28,7)}<span style="font-weight:700;font-size:14px">${c.name}</span></div>
+        <div style="display:flex;justify-content:space-around;margin-bottom:14px">
+          ${[['출석',c.present,'#4A9B6A'],['지각',c.late,'#D4864A'],['결석',c.absent,'#E85555']].map(([l,v,col])=>`<div style="text-align:center"><div style="font-size:24px;font-weight:900;color:${col}">${v}</div><div style="font-size:11px;color:var(--muted)">${l}</div></div>`).join('')}
+        </div>
+        <div class="prog-bar"><div class="prog-fill" style="width:${c.rate}%;background:${c.color}"></div></div>
+        <p style="font-size:12px;color:var(--muted);margin-top:4px">출석률 ${c.rate}% (${c.total}건)</p>
+      </div>`).join('')}
+    </div>`;
+  } else if(tab==='compare'){
+    const rows=[
+      ['총 회원',c=>`${c.memberCount}명`],['남성',c=>`${c.male}명`],['여성',c=>`${c.female}명`],
+      ['게시글',c=>`${c.posts}개`],['일정',c=>`${c.scheds}건`],['이벤트',c=>`${c.evts}건`],
+      ['출석률',c=>`${c.rate}%`],['출석기록',c=>`${c.total}건`],
+    ];
+    tabBody=`<div class="card" style="overflow-x:auto">
+      <table>
+        <thead><tr><th>항목</th>${stats.map(c=>`<th style="color:${c.color}">${c.name}</th>`).join('')}</tr></thead>
+        <tbody>${rows.map(([label,get],i)=>`<tr style="background:${i%2===0?'#fff':'var(--sur2)'}">
+          <td style="color:var(--muted);font-weight:600">${label}</td>
+          ${stats.map(c=>`<td style="text-align:center;font-weight:700;color:${c.color}">${get(c)}</td>`).join('')}
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+  } else if(tab==='members'){
+    tabBody=`<h2 class="sec-title">전체 회원 (${state.members.length}명)</h2>
+    ${state.members.length===0?`<div class="empty"><div class="ico">👤</div><p>등록된 회원이 없습니다.</p></div>`:`
+    <div style="overflow-x:auto"><table>
+      <thead><tr><th>이름</th><th>학번</th><th>성별</th><th>소속 동아리</th><th>가입일</th></tr></thead>
+      <tbody>${state.members.map((m,i)=>`<tr style="background:${i%2===0?'#fff':'var(--sur2)'}">
+        <td style="font-weight:700"><div style="display:flex;align-items:center;gap:5px">${esc(m.name)}(${String(m.studentYear).slice(2)}) ${psMark(m.status)}</div></td>
+        <td style="color:var(--muted)">${m.studentYear}학번</td>
+        <td style="color:var(--muted)">${m.gender==='male'?'남':m.gender==='female'?'여':'기타'} · ${m.status==='graduated'?'졸업생':'현역'}</td>
+        <td>${(m.clubs||[]).map(c=>`<span style="margin-right:4px;padding:2px 8px;border-radius:10px;background:${CLUBS[c]?.color}15;color:${CLUBS[c]?.color};font-size:11px;font-weight:700">${CLUBS[c]?.name}</span>`).join('')}</td>
+        <td style="color:var(--muted)">${fmtShort(m.joinedAt)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`}`;
+  }
+
+  return `
+  <div style="background:linear-gradient(135deg,#FFF0F0 0%,#fff 60%);border-bottom:1.5px solid var(--bdr);padding:24px 20px 18px">
+    <div style="max-width:1100px;margin:0 auto">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+        <div style="width:4px;height:20px;background:var(--pink);border-radius:2px"></div>
+        <h1 style="font-size:19px;font-weight:800;font-family:'Nanum Myeongjo',serif">통합 현황</h1>
+      </div>
+      <p style="color:var(--muted);font-size:12px;padding-left:12px">3개 동아리 실시간 통계 · 누구나 볼 수 있습니다</p>
+    </div>
+  </div>
+  <div class="content">${summaryCards}${clubCards}${tabHtml}${tabBody}</div>`;
+}
+
+// ============ ADMIN ============
+function renderAdmin(){
+  if(!state.isAdmin)return `<div class="content"><div class="empty" style="padding-top:80px"><div class="ico">🔒</div><p>관리자 전용</p></div></div>`;
+  const tab=state.subPage.adminTab||'members';
+  const pendingPwCount=state.pwRequests.filter(r=>r.status==='pending').length;
+  const tabs=[['members','👥 회원'],['posts','📝 게시글'],['promos','📢 홍보글'],['schedules','📅 일정·이벤트'],['pwreq','🔑 비번요청'+(pendingPwCount>0?' ('+pendingPwCount+')':'')]];
+  const tabHtml=`<div class="tabs">${tabs.map(([id,label])=>`<button class="tab ${tab===id?'active':''}" onclick="setSubPage('adminTab','${id}')">${label}</button>`).join('')}</div>`;
+
+  let body='';
+  if(tab==='members'){
+    const YEARS2=Array.from({length:41},(_,i)=>2010+i);
+    body=`<h2 class="sec-title">회원 관리 (${state.members.length}명)</h2>
+    ${state.members.length===0?`<div class="empty"><div class="ico">👤</div><p>등록된 회원이 없습니다.</p></div>`:
+    state.members.map(m=>`<div class="card" style="margin-bottom:10px;padding:16px 20px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="width:40px;height:40px;border-radius:12px;background:var(--sur2);border:1.5px solid var(--bdr);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:var(--pink)">${esc(m.name[0])}</div>
+          <div><div style="font-weight:700;font-size:14px;display:flex;align-items:center;gap:5px">${esc(m.name)}(${String(m.studentYear).slice(2)}) ${psMark(m.status)}</div>
+          <div style="font-size:12px;color:var(--muted)">${m.studentYear}학번 · ${m.gender==='male'?'남':m.gender==='female'?'여':'기타'} · ${m.status==='graduated'?'졸업생':'현역'}</div>
+          <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">${(m.clubs||[]).map(c=>`<span style="padding:1px 8px;border-radius:10px;background:${CLUBS[c]?.color}15;color:${CLUBS[c]?.color};font-size:11px;font-weight:700">${CLUBS[c]?.name}</span>`).join('')}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-d btn-sm" onclick="if(confirm('${esc(m.name)} 회원을 삭제할까요?')){deleteMember('${m.id}')}">삭제</button>
+        </div>
+      </div>
+    </div>`).join('')}`;
+  } else if(tab==='posts'){
+    body=`<h2 class="sec-title">게시글 관리 (${state.posts.length}개)</h2>
+    ${state.posts.length===0?`<div class="empty"><div class="ico">📭</div><p>게시글이 없습니다.</p></div>`:
+    [...state.posts].reverse().map(p=>{const c=CLUBS[p.clubId];return`
+    <div class="card" style="margin-bottom:10px;padding:14px 18px;border-left:3px solid ${c?.color}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div style="flex:1">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+            <span style="font-size:11px;color:${c?.color};font-weight:700;background:${c?.color}15;padding:2px 8px;border-radius:10px">${c?.name}</span>
+            <span style="font-size:11px;color:var(--muted)">${p.isAnon?'익명':esc(p.authorName)} · ${fmtShort(p.createdAt)}</span>
+            ${p.isAnon?`<span style="font-size:10px;background:var(--sur2);padding:1px 6px;border-radius:6px;color:var(--muted);border:1px solid var(--bdr)">비밀글</span>`:''}
+          </div>
+          <p style="font-size:13px;line-height:1.6">${esc(p.content)}</p>
+        </div>
+        <button class="btn btn-d btn-sm" style="margin-left:12px;flex-shrink:0" onclick="if(confirm('삭제할까요?'))deletePost('${p.id}')">삭제</button>
+      </div>
+    </div>`;}).join('')}`;
+  } else if(tab==='promos'){
+    body=`<h2 class="sec-title">홍보글 관리 (${state.promos.length}개)</h2>
+    ${state.promos.length===0?`<div class="empty"><div class="ico">📢</div><p>홍보글이 없습니다.</p></div>`:
+    [...state.promos].reverse().map(p=>{const c=CLUBS[p.clubId];return`
+    <div class="card" style="margin-bottom:10px;padding:14px 18px;border-left:3px solid ${c?.color}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <span style="font-size:11px;color:${c?.color};font-weight:700;background:${c?.color}15;padding:2px 8px;border-radius:10px">${c?.name}</span>
+          <h3 style="font-size:14px;font-weight:700;margin:6px 0 4px">${esc(p.title)}</h3>
+          <p style="font-size:13px;color:var(--muted);line-height:1.5">${esc(p.content)}</p>
+          <p style="font-size:11px;color:var(--light);margin-top:6px">${esc(p.authorName)} · ${fmtShort(p.createdAt)}</p>
+        </div>
+        <button class="btn btn-d btn-sm" style="margin-left:12px;flex-shrink:0" onclick="deletePromo('${p.id}')">삭제</button>
+      </div>
+    </div>`;}).join('')}`;
+  } else if(tab==='schedules'){
+    body=`<h2 class="sec-title">일정 (${state.schedules.length}개)</h2>
+    ${state.schedules.length===0?`<p style="color:var(--muted);font-size:13px;margin-bottom:20px">등록된 일정이 없습니다.</p>`:
+    [...state.schedules].reverse().map(s=>{const c=CLUBS[s.clubId];return`
+    <div class="card" style="margin-bottom:8px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-left:3px solid ${c?.color}">
+      <div><span style="font-size:11px;color:${c?.color};font-weight:700;margin-right:8px">${c?.name}</span>
+      <span style="font-weight:600;font-size:14px">${esc(s.title)}</span>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">${fmtDate(s.date)}</div></div>
+      <button class="btn btn-d btn-sm" onclick="deleteSched('${s.id}')">삭제</button>
+    </div>`;}).join('')}
+    <h2 class="sec-title" style="margin-top:24px">이벤트 (${state.events.length}개)</h2>
+    ${state.events.length===0?`<p style="color:var(--muted);font-size:13px">등록된 이벤트가 없습니다.</p>`:
+    [...state.events].reverse().map(ev=>{const c=CLUBS[ev.clubId];return`
+    <div class="card" style="margin-bottom:8px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-left:3px solid ${c?.color}">
+      <div><span style="font-size:11px;color:${c?.color};font-weight:700;margin-right:8px">${c?.name}</span>
+      <span style="font-weight:600;font-size:14px">${esc(ev.title)}</span>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">${fmtDate(ev.date)}</div></div>
+      <button class="btn btn-d btn-sm" onclick="deleteEvent('${ev.id}')">삭제</button>
+    </div>`;}).join('')}`;
+  }
+
+  if(tab==='pwreq') body=renderAdminPwRequests();
+
+  return `
+  <div style="background:linear-gradient(135deg,#FFF0F0 0%,#fff 60%);border-bottom:1.5px solid var(--bdr);padding:24px 20px 18px">
+    <div style="max-width:1100px;margin:0 auto;display:flex;align-items:center;gap:8px">
+      <div style="width:4px;height:20px;background:var(--pink);border-radius:2px"></div>
+      <div><h1 style="font-size:19px;font-weight:800;font-family:'Nanum Myeongjo',serif">관리자 패널</h1>
+      <p style="color:var(--muted);font-size:12px">모든 데이터를 관리합니다</p></div>
+    </div>
+  </div>
+  <div class="content">${tabHtml}${body}</div>`;
+}
+
+function deleteMember(id){state.members=state.members.filter(m=>m.id!==id);render();}
+
+// ============ PROFILE ============
+function renderProfile(){
+  const u=state.user;
+  const myClubs=u.clubs||[];
+  const myPosts=state.posts.filter(p=>p.authorId===u.id);
+  const myAttend=Object.values(CLUBS).filter(c=>myClubs.includes(c.id)).map(club=>{
+    const r=state.attendance.filter(a=>a.clubId===club.id&&a.memberId===u.id);
+    const present=r.filter(x=>x.status==='present').length;
+    const late=r.filter(x=>x.status==='late').length;
+    const absent=r.filter(x=>x.status==='absent').length;
+    const total=r.length;
+    return{...club,present,late,absent,total,rate:total>0?Math.round((present/total)*100):0};
+  });
+
+  return `
+  <div style="background:linear-gradient(135deg,#FFF0F0 0%,#fff 70%);border-bottom:1.5px solid var(--bdr);padding:36px 20px 28px">
+    <div style="max-width:1100px;margin:0 auto;display:flex;align-items:center;gap:20px">
+      <div style="width:68px;height:68px;border-radius:20px;background:linear-gradient(135deg,var(--pink),var(--pink-l));display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:#fff;box-shadow:0 4px 16px rgba(242,139,139,.3)">${esc(u.name[0])}</div>
+      <div>
+        <h1 style="font-size:22px;font-weight:900;font-family:'Nanum Myeongjo',serif;margin-bottom:4px">${esc(u.name)}</h1>
+        <p style="color:var(--muted);font-size:13px">${u.studentYear}학번 · ${u.gender==='male'?'남성':u.gender==='female'?'여성':'기타'}</p>
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">${myClubs.map(c=>`<span class="club-tag" style="color:${CLUBS[c]?.color};border-color:${CLUBS[c]?.color};background:${CLUBS[c]?.color}12;padding:3px 12px">${CLUBS[c]?.name}</span>`).join('')}</div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-g btn-sm" onclick="showChangePw()">🔑 비밀번호 변경</button>
+          <button class="btn btn-g btn-sm" onclick="showPwReq()">🆘 비밀번호 찾기 요청</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="content">
+  <div id="profile-pw-area"></div>
+    <div class="g3" style="margin-bottom:24px">
+      ${[['소속 동아리',myClubs.length,'개','var(--hora)'],['작성 게시글',myPosts.length,'개','var(--pink)'],['출석 기록',myAttend.reduce((a,c)=>a+c.total,0),'건','var(--theme)']].map(([label,val,unit,col])=>`
+      <div class="card" style="text-align:center;border-top:3px solid ${col}">
+        <div style="font-size:30px;font-weight:900;color:${col}">${val}<span style="font-size:13px">${unit}</span></div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">${label}</div>
+      </div>`).join('')}
+    </div>
+    ${myAttend.length>0?`
+    <div style="margin-bottom:24px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><div style="width:4px;height:18px;background:var(--pink);border-radius:2px"></div><h2 style="font-size:16px;font-weight:700">내 출석 현황</h2></div>
+      <div class="g3">${myAttend.map(c=>`<div class="card" style="border-top:3px solid ${c.color}">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">${logoImg(c,26,6)}<span style="font-weight:700;font-size:13px">${c.name}</span></div>
+        <div style="display:flex;gap:10px;justify-content:center;margin-bottom:10px">
+          ${[['출석',c.present,'#4A9B6A'],['지각',c.late,'#D4864A'],['결석',c.absent,'#E85555']].map(([l,v,col])=>`<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:${col}">${v}</div><div style="font-size:10px;color:var(--muted)">${l}</div></div>`).join('')}
+        </div>
+        <div style="font-size:24px;font-weight:900;color:${c.color};text-align:center;margin-bottom:6px">${c.rate}%</div>
+        <div class="prog-bar"><div class="prog-fill" style="width:${c.rate}%;background:${c.color}"></div></div>
+        <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:4px">${c.total}회 기록</p>
+      </div>`).join('')}</div>
+    </div>`:''}
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><div style="width:4px;height:18px;background:var(--pink);border-radius:2px"></div><h2 style="font-size:16px;font-weight:700">내가 쓴 글 (${myPosts.length})</h2></div>
+      ${myPosts.length===0?`<div class="empty"><div class="ico">✏️</div><p>아직 작성한 글이 없습니다.</p></div>`:
+      [...myPosts].reverse().map(p=>{const c=CLUBS[p.clubId];return`
+      <div class="card" style="padding:14px 18px;margin-bottom:10px;border-left:3px solid ${c?.color}">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+          <span style="font-size:11px;color:${c?.color};font-weight:700;background:${c?.color}15;padding:2px 8px;border-radius:10px">${c?.name}</span>
+          ${p.isAnon?`<span style="font-size:10px;background:var(--sur2);padding:1px 6px;border-radius:6px;color:var(--muted);border:1px solid var(--bdr)">익명</span>`:''}
+          <span style="font-size:11px;color:var(--light);margin-left:auto">${fmtShort(p.createdAt)}</span>
+        </div>
+        <p style="font-size:13px;line-height:1.6">${esc(p.content)}</p>
+        <p style="font-size:11px;color:var(--pink);margin-top:6px">❤️ ${p.likes||0}</p>
+      </div>`;}).join('')}
+    </div>
+  </div>`;
+}
+
+
+// ============ PASSWORD CHANGE ============
+function renderChangePw(){
+  return `
+  <div id="cpw-wrap" class="card" style="margin-bottom:20px;border:1.5px solid var(--pink-l)">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+      <div style="width:4px;height:18px;background:var(--pink);border-radius:2px"></div>
+      <h3 style="font-size:16px;font-weight:700">비밀번호 변경</h3>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="notice">
+        현재 비밀번호 확인 후 새 비밀번호(8자리 숫자)를 설정합니다.
+      </div>
+      <div><label class="lbl">현재 비밀번호</label>
+        <div class="pw-wrap"><input class="inp" id="cpw-old" type="password" placeholder="현재 비밀번호 8자리" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">        <button class="pw-eye" onclick="togglePw('cpw-old',this)">👁️</button></div></div>
+      <div><label class="lbl">새 비밀번호</label>
+        <div class="pw-wrap"><input class="inp" id="cpw-new" type="password" placeholder="새 비밀번호 8자리" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">        <button class="pw-eye" onclick="togglePw('cpw-new',this)">👁️</button></div></div>
+      <div><label class="lbl">새 비밀번호 확인</label>
+        <div class="pw-wrap"><input class="inp" id="cpw-new2" type="password" placeholder="새 비밀번호 재입력" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">        <button class="pw-eye" onclick="togglePw('cpw-new2',this)">👁️</button></div></div>
+      <div id="cpw-err" style="display:none;color:var(--red);font-size:13px;padding:8px 12px;background:#fff0f0;border-radius:8px"></div>
+      <div id="cpw-ok" style="display:none;color:var(--green);font-size:13px;padding:8px 12px;background:#f0fff6;border-radius:8px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-g btn-sm" onclick="document.getElementById('cpw-wrap').style.display='none'">취소</button>
+        <button class="btn btn-p btn-sm" onclick="doChangePw()">변경하기</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function doChangePw(){
+  const old=document.getElementById('cpw-old').value;
+  const nw=document.getElementById('cpw-new').value;
+  const nw2=document.getElementById('cpw-new2').value;
+  const err=document.getElementById('cpw-err');
+  const ok=document.getElementById('cpw-ok');
+  err.style.display='none';ok.style.display='none';
+  if(!old||!nw||!nw2){err.textContent='모든 항목을 입력해주세요.';err.style.display='block';return;}
+  if(old!==state.user.password){err.textContent='현재 비밀번호가 일치하지 않습니다.';err.style.display='block';return;}
+  if(!/^\d{8}$/.test(nw)){err.textContent='새 비밀번호는 8자리 숫자여야 합니다.';err.style.display='block';return;}
+  if(nw===old){err.textContent='새 비밀번호가 기존 비밀번호와 같습니다.';err.style.display='block';return;}
+  if(nw!==nw2){err.textContent='새 비밀번호가 일치하지 않습니다.';err.style.display='block';return;}
+  // 저장
+  const idx=state.members.findIndex(m=>m.id===state.user.id);
+  if(idx>=0){state.members[idx].password=nw;state.user=state.members[idx];}
+  ok.textContent='✅ 비밀번호가 변경되었습니다!';ok.style.display='block';
+  document.getElementById('cpw-old').value='';
+  document.getElementById('cpw-new').value='';
+  document.getElementById('cpw-new2').value='';
+  save();
+}
+
+// ============ PASSWORD REQUEST ============
+function renderPwRequest(){
+  const myReq=state.pwRequests.filter(r=>r.memberId===state.user.id);
+  const lastReq=myReq[myReq.length-1];
+  return `
+  <div class="card" style="margin-bottom:20px;border:1.5px solid var(--bdr)">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <div style="width:4px;height:18px;background:var(--hora);border-radius:2px"></div>
+      <h3 style="font-size:16px;font-weight:700">비밀번호 찾기 요청</h3>
+    </div>
+    ${lastReq&&lastReq.status==='pending'?`
+    <div class="notice" style="margin-bottom:12px">
+      <strong>⏳ 요청 대기 중</strong><br>
+      ${lastReq.createdAt.slice(0,10)} 에 요청하셨습니다.<br>
+      관리자가 확인 후 비밀번호를 알려드립니다.
+    </div>`:''}
+    ${lastReq&&lastReq.status==='done'?`
+    <div style="background:#f0fff6;border:1.5px solid #4A9B6A40;border-radius:var(--r);padding:14px 16px;margin-bottom:12px">
+      <div style="font-weight:700;color:var(--green);margin-bottom:6px">✅ 관리자 답변 완료</div>
+      <div style="font-size:13px;color:var(--txt);line-height:1.7">${esc(lastReq.adminReply||'')} </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">${fmtShort(lastReq.repliedAt||lastReq.createdAt)}</div>
+    </div>`:''}
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <p style="font-size:13px;color:var(--muted);line-height:1.7">
+        비밀번호를 잊으셨나요? 관리자에게 요청을 보내면<br>
+        비밀번호를 확인하여 알려드립니다.
+      </p>
+      <textarea class="inp" id="pwreq-msg" placeholder="관리자에게 전달할 메시지 (선택)" style="min-height:70px"></textarea>
+      <button class="btn btn-p btn-sm" style="align-self:flex-end" onclick="submitPwRequest()">요청 보내기</button>
+    </div>
+  </div>`;
+}
+
+function submitPwRequest(){
+  const msg=document.getElementById('pwreq-msg').value.trim();
+  const already=state.pwRequests.find(r=>r.memberId===state.user.id&&r.status==='pending');
+  if(already){alert('이미 처리 대기 중인 요청이 있습니다. 관리자 답변을 기다려주세요.');return;}
+  state.pwRequests.push({
+    id:uid(), memberId:state.user.id, memberName:state.user.name,
+    studentYear:state.user.studentYear, msg, status:'pending',
+    createdAt:new Date().toISOString(), adminReply:'', repliedAt:null,
+  });
+  save();
+  alert('✅ 요청이 전송되었습니다! 관리자 확인 후 답변해 드립니다.');
+  render();
+}
+
+// 관리자: 비번 요청 탭
+function renderAdminPwRequests(){
+  const reqs=[...state.pwRequests].reverse();
+  const pending=reqs.filter(r=>r.status==='pending');
+  return `
+  <div style="margin-bottom:6px;display:flex;align-items:center;gap:8px">
+    <h2 class="sec-title" style="margin:0">비밀번호 요청</h2>
+    ${pending.length>0?`<span style="background:var(--red);color:#fff;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px">${pending.length}건 대기</span>`:''}
+  </div>
+  ${reqs.length===0?`<div class="empty"><div class="ico">📭</div><p>비밀번호 요청이 없습니다.</p></div>`:
+  reqs.map(r=>{
+    // 해당 회원 실제 비번 찾기
+    const member=state.members.find(m=>m.id===r.memberId);
+    const actualPw=member?member.password:'(탈퇴 회원)';
+    return `
+    <div class="card" style="margin-bottom:10px;padding:16px 20px;border-left:4px solid ${r.status==='done'?'var(--green)':'var(--pink)'}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="font-weight:700;font-size:14px">${esc(r.memberName)}</span>
+            <span style="font-size:12px;color:var(--muted)">${r.studentYear}학번</span>
+            <span style="font-size:11px;padding:2px 9px;border-radius:20px;font-weight:700;${r.status==='done'?'background:#f0fff6;color:var(--green)':'background:#fff0f0;color:var(--red)'}">
+              ${r.status==='done'?'✅ 완료':'⏳ 대기중'}
+            </span>
+          </div>
+          ${r.msg?`<p style="font-size:13px;color:var(--muted);margin-bottom:4px">메시지: ${esc(r.msg)}</p>`:''}
+          <p style="font-size:11px;color:var(--light)">${fmtShort(r.createdAt)} 요청</p>
+          ${r.status==='pending'?`
+          <div style="margin-top:10px;padding:10px 14px;background:var(--sur2);border-radius:10px;border:1px solid var(--bdr)">
+            <p style="font-size:12px;color:var(--muted);margin-bottom:6px">실제 비밀번호: <strong style="color:var(--txt);font-size:14px;letter-spacing:2px">${actualPw}</strong></p>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input class="inp" id="reply-${r.id}" placeholder="학생에게 전달할 메시지" style="flex:1;min-width:200px">
+              <button class="btn btn-p btn-sm" onclick="replyPwRequest('${r.id}')">답변 보내기</button>
+            </div>
+          </div>`:`
+          <div style="margin-top:8px;font-size:12px;color:var(--muted)">
+            답변: ${esc(r.adminReply||'')} · ${r.repliedAt?fmtShort(r.repliedAt):''}
+          </div>`}
+        </div>
+      </div>
+    </div>`;
+  }).join('')}
+  `;
+}
+
+function replyPwRequest(reqId){
+  const reply=document.getElementById('reply-'+reqId).value.trim();
+  if(!reply){alert('학생에게 전달할 메시지를 입력해주세요.');return;}
+  const idx=state.pwRequests.findIndex(r=>r.id===reqId);
+  if(idx>=0){
+    state.pwRequests[idx].status='done';
+    state.pwRequests[idx].adminReply=reply;
+    state.pwRequests[idx].repliedAt=new Date().toISOString();
+  }
+  save();render();
+}
+
+
+function showChangePw(){
+  document.getElementById('profile-pw-area').innerHTML=renderChangePw();
+  document.getElementById('profile-pw-area').scrollIntoView({behavior:'smooth'});
+}
+function showPwReq(){
+  document.getElementById('profile-pw-area').innerHTML=renderPwRequest();
+  document.getElementById('profile-pw-area').scrollIntoView({behavior:'smooth'});
+}
+
+// ============ START ============
+render();
+</script>
+</body>
+</html>
