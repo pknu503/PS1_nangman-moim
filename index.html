@@ -312,16 +312,33 @@ function render(){
 
 // Firebase 실시간 polling (5초마다)
 let _pollTimer=null;
-let _modalOpen=false; // 모달 열림 여부 플래그
+let _modalOpen=false; // 모달/폼 입력 중 플래그
+
+// 사용자가 입력 중인지 감지
+function isUserTyping(){
+  const active=document.activeElement;
+  if(!active)return false;
+  const tag=active.tagName.toLowerCase();
+  return tag==='input'||tag==='textarea'||tag==='select';
+}
 
 function startPolling(){
   if(_pollTimer)clearInterval(_pollTimer);
   _pollTimer=setInterval(async()=>{
     if(!state.user)return;
-    if(_modalOpen)return; // 모달 열려있으면 완전히 건너뜀
+    // 모달 열려있거나 사용자가 입력 중이면 완전히 건너뜀
+    if(_modalOpen||isUserTyping())return;
+    // 현재 페이지가 홈/동아리 게시판처럼 입력폼이 있는 경우 데이터만 조용히 갱신
+    const quietPages=['home','hora','myth','theme','profile'];
+    if(quietPages.includes(state.page)){
+      // 화면 재렌더 없이 데이터만 업데이트
+      await loadFromFirebase();
+      return;
+    }
+    // 통합현황·관리자 페이지만 자동 화면 갱신
     await loadFromFirebase();
     render();
-  },5000);
+  },8000); // 8초로 늘려서 사용성 개선
 }
 function stopPolling(){if(_pollTimer){clearInterval(_pollTimer);_pollTimer=null;}}
 
@@ -668,16 +685,17 @@ function showPromoForm(){
   const clubOpts=(state.isAdmin?Object.values(CLUBS):Object.values(CLUBS).filter(c=>myClubs.includes(c.id)))
     .map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
   const allOpt=state.isAdmin?`<option value="all">📣 전체 동아리 (모든 게시판에 게시)</option>`:'';
+  _modalOpen=true;
   document.getElementById('promo-form-area').innerHTML=`
   <div class="card" style="margin-bottom:16px;border:1.5px solid var(--pink-l)">
     <h3 style="font-size:14px;font-weight:700;margin-bottom:14px">홍보글 작성</h3>
     <div style="display:flex;flex-direction:column;gap:10px">
       <select class="inp" id="pf-club"><option value="">동아리 선택</option>${allOpt}${clubOpts}</select>
       ${state.isAdmin?`<div class="notice" id="pf-all-notice" style="display:none">📣 <strong>전체 게시</strong>: 오라·클럽신화·띰 게시판에 동시에 올라갑니다.</div>`:''}
-      <input class="inp" id="pf-title" placeholder="제목">
-      <textarea class="inp" id="pf-content" placeholder="내용을 입력하세요..."></textarea>
+      <input class="inp" id="pf-title" placeholder="제목" onfocus="_modalOpen=true" onblur="if(!document.getElementById('pf-content')?.value&&!document.getElementById('pf-title')?.value)_modalOpen=false">
+      <textarea class="inp" id="pf-content" placeholder="내용을 입력하세요..." onfocus="_modalOpen=true"></textarea>
       <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn btn-g btn-sm" onclick="document.getElementById('promo-form-area').innerHTML=''">취소</button>
+        <button class="btn btn-g btn-sm" onclick="_modalOpen=false;document.getElementById('promo-form-area').innerHTML=''">취소</button>
         <button class="btn btn-p btn-sm" onclick="submitPromo()">등록</button>
       </div>
     </div>
@@ -707,6 +725,7 @@ function submitPromo(){
   }
   saveLocal();
   fbPatch('promos',newPromos);
+  _modalOpen=false;
   render();
 }
 
@@ -769,7 +788,7 @@ function renderClubBoard(clubId,club){
 
   return `
   <div class="card" style="margin-bottom:16px;border:1.5px solid ${club.color}25">
-    <textarea class="inp" id="post-content" placeholder="${club.boardName||club.name} 게시판에 글을 남겨보세요..." style="margin-bottom:10px;border-color:${club.color}25"></textarea>
+    <textarea class="inp" id="post-content" placeholder="${club.boardName||club.name} 게시판에 글을 남겨보세요..." style="margin-bottom:10px;border-color:${club.color}25" onfocus="_modalOpen=true" onblur="_modalOpen=false"></textarea>
     <div style="display:flex;justify-content:space-between;align-items:center">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--muted)">
         <input type="checkbox" id="post-anon" style="accent-color:${club.color}"> 익명(비밀)으로 작성
@@ -788,6 +807,7 @@ function submitPost(clubId){
   state.posts.push(item);
   saveLocal();
   fbPatch('posts',{[item.id]:item});
+  _modalOpen=false;
   render();
 }
 function deletePost(id){if(confirm('삭제할까요?')){fbRemoveItem('posts',id);}}
@@ -803,12 +823,12 @@ function renderClubSchedule(clubId,club){
   const formHtml=state.isAdmin?`
   <div class="card" style="margin-bottom:16px" id="sched-form" style="display:none">
     <div style="display:flex;flex-direction:column;gap:10px">
-      <input class="inp" id="sf-title" placeholder="일정 제목">
+      <input class="inp" id="sf-title" placeholder="일정 제목" onfocus="_modalOpen=true">
       <input class="inp" type="date" id="sf-date">
       <select class="inp" id="sf-type"><option value="monthly">월별 일정</option><option value="weekly">주별 일정</option><option value="other">기타</option></select>
       <input class="inp" id="sf-week" placeholder="주차 예: 1주차">
       <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn btn-g btn-sm" onclick="document.getElementById('sched-form').style.display='none'">취소</button>
+        <button class="btn btn-g btn-sm" onclick="_modalOpen=false;document.getElementById('sched-form').style.display='none'">취소</button>
         <button class="btn btn-p btn-sm" onclick="submitSched('${clubId}')">추가</button>
       </div>
     </div>
@@ -830,7 +850,7 @@ function renderClubSchedule(clubId,club){
   return `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
     <h2 class="sec-title" style="margin:0">일정 관리</h2>
-    ${state.isAdmin?`<button class="btn btn-p btn-sm" onclick="document.getElementById('sched-form').style.display='block'">+ 일정 추가</button>`:''}
+    ${state.isAdmin?`<button class="btn btn-p btn-sm" onclick="_modalOpen=true;document.getElementById('sched-form').style.display='block'">+ 일정 추가</button>`:''}
   </div>
   ${formHtml}${lists}`;
 }
@@ -845,6 +865,7 @@ function submitSched(clubId){
   state.schedules.push(item);
   saveLocal();
   fbPatch('schedules',{[item.id]:item});
+  _modalOpen=false;
   render();
 }
 function deleteSched(id){if(confirm('삭제할까요?')){fbRemoveItem('schedules',id);}}
@@ -854,11 +875,11 @@ function renderClubEvent(clubId,club){
   const formHtml=state.isAdmin?`
   <div class="card" style="margin-bottom:16px" id="ev-form" style="display:none">
     <div style="display:flex;flex-direction:column;gap:10px">
-      <input class="inp" id="ef-title" placeholder="이벤트 제목">
+      <input class="inp" id="ef-title" placeholder="이벤트 제목" onfocus="_modalOpen=true">
       <input class="inp" type="date" id="ef-date">
       <textarea class="inp" id="ef-desc" placeholder="이벤트 설명" style="min-height:70px"></textarea>
       <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn btn-g btn-sm" onclick="document.getElementById('ev-form').style.display='none'">취소</button>
+        <button class="btn btn-g btn-sm" onclick="_modalOpen=false;document.getElementById('ev-form').style.display='none'">취소</button>
         <button class="btn btn-p btn-sm" onclick="submitEvent('${clubId}')">추가</button>
       </div>
     </div>
@@ -879,7 +900,7 @@ function renderClubEvent(clubId,club){
   return `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
     <h2 class="sec-title" style="margin:0">이벤트</h2>
-    ${state.isAdmin?`<button class="btn btn-p btn-sm" onclick="document.getElementById('ev-form').style.display='block'">+ 이벤트 추가</button>`:''}
+    ${state.isAdmin?`<button class="btn btn-p btn-sm" onclick="_modalOpen=true;document.getElementById('ev-form').style.display='block'">+ 이벤트 추가</button>`:''}
   </div>
   ${formHtml}
   ${events.length===0?emptyState('🎊','등록된 이벤트가 없습니다.'):cards}`;
@@ -894,6 +915,7 @@ function submitEvent(clubId){
   state.events.push(item);
   saveLocal();
   fbPatch('events',{[item.id]:item});
+  _modalOpen=false;
   render();
 }
 function deleteEvent(id){if(confirm('삭제할까요?')){fbRemoveItem('events',id);}}
@@ -1463,7 +1485,7 @@ function showEditProfile(){
     <div style="display:flex;flex-direction:column;gap:14px">
       <div>
         <label class="lbl">이름</label>
-        <input class="inp" id="edit-name" value="${esc(u.name)}" placeholder="이름">
+        <input class="inp" id="edit-name" onfocus="_modalOpen=true" value="${esc(u.name)}" placeholder="이름">
       </div>
       <div>
         <label class="lbl">학번 (입학연도)</label>
@@ -1661,18 +1683,18 @@ function renderChangePw(){
     <div style="display:flex;flex-direction:column;gap:12px">
       <div class="notice">현재 비밀번호 확인 후 새 비밀번호(8자리 숫자)를 설정합니다.</div>
       <div><label class="lbl">현재 비밀번호</label>
-        <div class="pw-wrap"><input class="inp" id="cpw-old" type="password" placeholder="현재 비밀번호 8자리" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">
+        <div class="pw-wrap"><input class="inp" id="cpw-old" onfocus="_modalOpen=true" type="password" placeholder="현재 비밀번호 8자리" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">
         <button class="pw-eye" onclick="togglePw('cpw-old',this)">👁️</button></div></div>
       <div><label class="lbl">새 비밀번호</label>
-        <div class="pw-wrap"><input class="inp" id="cpw-new" type="password" placeholder="새 비밀번호 8자리" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">
+        <div class="pw-wrap"><input class="inp" id="cpw-new" onfocus="_modalOpen=true" type="password" placeholder="새 비밀번호 8자리" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">
         <button class="pw-eye" onclick="togglePw('cpw-new',this)">👁️</button></div></div>
       <div><label class="lbl">새 비밀번호 확인</label>
-        <div class="pw-wrap"><input class="inp" id="cpw-new2" type="password" placeholder="새 비밀번호 재입력" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">
+        <div class="pw-wrap"><input class="inp" id="cpw-new2" onfocus="_modalOpen=true" type="password" placeholder="새 비밀번호 재입력" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">
         <button class="pw-eye" onclick="togglePw('cpw-new2',this)">👁️</button></div></div>
       <div id="cpw-err" style="display:none;color:var(--red);font-size:13px;padding:8px 12px;background:#fff0f0;border-radius:8px"></div>
       <div id="cpw-ok" style="display:none;color:var(--green);font-size:13px;padding:8px 12px;background:#f0fff6;border-radius:8px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn btn-g btn-sm" onclick="document.getElementById('cpw-wrap').style.display='none'">취소</button>
+        <button class="btn btn-g btn-sm" onclick="_modalOpen=false;document.getElementById('cpw-wrap').style.display='none'">취소</button>
         <button class="btn btn-p btn-sm" onclick="doChangePw()">변경하기</button>
       </div>
     </div>
@@ -1698,6 +1720,7 @@ function doChangePw(){
     saveLocal();
     fbPatch('members',{[state.user.id]:state.members[idx]});
   }
+  _modalOpen=false;
   ok.textContent='✅ 비밀번호가 변경되었습니다!';ok.style.display='block';
   document.getElementById('cpw-old').value='';
   document.getElementById('cpw-new').value='';
@@ -1804,10 +1827,12 @@ function replyPwRequest(reqId){
 }
 
 function showChangePw(){
+  _modalOpen=true;
   document.getElementById('profile-action-area').innerHTML=renderChangePw();
   document.getElementById('profile-action-area').scrollIntoView({behavior:'smooth'});
 }
 function showPwReq(){
+  _modalOpen=true;
   document.getElementById('profile-action-area').innerHTML=renderPwRequest();
   document.getElementById('profile-action-area').scrollIntoView({behavior:'smooth'});
 }
