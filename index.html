@@ -117,7 +117,7 @@ td{padding:11px 14px;border-bottom:1px solid var(--bdr)}
 
 <script>
 // ============ DATA ============
-const GITHUB_RAW = 'https://raw.githubusercontent.com/pknu503/nangman-moim/main';
+const GITHUB_RAW = 'https://raw.githubusercontent.com/pknu503/PS1_nangman-moim/main';
 const CLUBS = {
   hora:{id:'hora',name:'오라',en:'Hora',color:'#9B8EC4',emoji:'🕐',logo:`${GITHUB_RAW}/%EC%98%A4%EB%9D%BC.jpg`,desc:'시간을 함께하는 동아리',boardName:'오라타임'},
   myth:{id:'myth',name:'클럽신화',en:'MYTH',color:'#D4864A',emoji:'🔥',logo:`${GITHUB_RAW}/%EC%8B%A0%ED%99%94.jpg`,desc:'신화를 만들어가는 동아리',boardName:'신화전기'},
@@ -160,48 +160,49 @@ let state={
   attendance: ld('nm_attend',[]),
   promos: ld('nm_promos',[]),
   pwRequests: ld('nm_pwreq',[]),
+  withdrawals: ld('nm_withdrawals',[]),
   page:'home',
   subPage:{},
 };
 
-function save(){
-  // 로컬 캐시 저장
+function saveLocal(){
   sv('nm_user',state.user);sv('nm_admin',state.isAdmin);
   sv('nm_members',state.members);sv('nm_posts',state.posts);
   sv('nm_schedules',state.schedules);sv('nm_events',state.events);
   sv('nm_attend',state.attendance);sv('nm_promos',state.promos);
-  sv('nm_pwreq',state.pwRequests);sv('nm_withdrawals',state.withdrawals);
-  // Firebase 공유 저장
-  fbSet('members',state.members);
-  fbSet('posts',state.posts);
-  fbSet('schedules',state.schedules);
-  fbSet('events',state.events);
-  fbSet('attendance',state.attendance);
-  fbSet('promos',state.promos);
-  fbSet('pwRequests',state.pwRequests);
-  fbSet('withdrawals',state.withdrawals);
+  sv('nm_pwreq',state.pwRequests);sv('nm_withdrawals',state.withdrawals||[]);
+}
+function save(){
+  saveLocal();
+  // Firebase에 공유 데이터 저장
+  fbSet('members', state.members||[]);
+  fbSet('posts', state.posts||[]);
+  fbSet('schedules', state.schedules||[]);
+  fbSet('events', state.events||[]);
+  fbSet('attendance', state.attendance||[]);
+  fbSet('promos', state.promos||[]);
+  fbSet('pwRequests', state.pwRequests||[]);
+  fbSet('withdrawals', state.withdrawals||[]);
 }
 
-// Firebase에서 전체 데이터 로드
+// Firebase에서 전체 데이터 로드 (안전하게)
+function toArr(v){ if(!v) return []; if(Array.isArray(v)) return v.filter(x=>x!=null); return Object.values(v).filter(x=>x!=null); }
 async function loadFromFirebase(){
   try{
     const [members,posts,schedules,events,attendance,promos,pwRequests,withdrawals]=await Promise.all([
       fbGet('members'), fbGet('posts'), fbGet('schedules'), fbGet('events'),
       fbGet('attendance'), fbGet('promos'), fbGet('pwRequests'), fbGet('withdrawals'),
     ]);
-    if(members) state.members=Array.isArray(members)?members:Object.values(members);
-    if(posts) state.posts=Array.isArray(posts)?posts:Object.values(posts);
-    if(schedules) state.schedules=Array.isArray(schedules)?schedules:Object.values(schedules);
-    if(events) state.events=Array.isArray(events)?events:Object.values(events);
-    if(attendance) state.attendance=Array.isArray(attendance)?attendance:Object.values(attendance);
-    if(promos) state.promos=Array.isArray(promos)?promos:Object.values(promos);
-    if(pwRequests) state.pwRequests=Array.isArray(pwRequests)?pwRequests:Object.values(pwRequests);
-    if(withdrawals) state.withdrawals=Array.isArray(withdrawals)?withdrawals:Object.values(withdrawals);
-    // 로컬 캐시도 업데이트
-    sv('nm_members',state.members);sv('nm_posts',state.posts);
-    sv('nm_schedules',state.schedules);sv('nm_events',state.events);
-    sv('nm_attend',state.attendance);sv('nm_promos',state.promos);
-    sv('nm_pwreq',state.pwRequests);sv('nm_withdrawals',state.withdrawals);
+    state.members    = toArr(members);
+    state.posts      = toArr(posts);
+    state.schedules  = toArr(schedules);
+    state.events     = toArr(events);
+    state.attendance = toArr(attendance);
+    state.promos     = toArr(promos);
+    state.pwRequests = toArr(pwRequests);
+    state.withdrawals= toArr(withdrawals);
+    saveLocal(); // 로컬 캐시 업데이트
+    console.log('Firebase loaded: members='+state.members.length+' posts='+state.posts.length);
   }catch(e){
     console.error('Firebase load error:',e);
   }
@@ -227,7 +228,7 @@ function memberLabel(m){
 
 // ============ RENDER ENGINE ============
 function render(){
-  save();
+  // save()를 render에서 제거 - 데이터 변경시에만 저장
   if(!state.user){renderAuth();return;}
   renderApp();
 }
@@ -1450,7 +1451,11 @@ document.body.innerHTML=`
 </div>`;
 
 (async()=>{
-  await loadFromFirebase();
+  try{
+    await loadFromFirebase();
+  }catch(e){
+    console.error('Init load failed:',e);
+  }
   render();
   startPolling();
 })();
