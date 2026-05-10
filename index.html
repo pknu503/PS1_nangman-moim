@@ -153,6 +153,7 @@ function save(){
   sv('nm_schedules',state.schedules);sv('nm_events',state.events);
   sv('nm_attend',state.attendance);sv('nm_promos',state.promos);
   sv('nm_pwreq',state.pwRequests);
+  sv('nm_withdrawals',state.withdrawals);
 }
 
 // ============ HELPERS ============
@@ -924,7 +925,7 @@ function renderAdmin(){
   if(!state.isAdmin)return `<div class="content"><div class="empty" style="padding-top:80px"><div class="ico">🔒</div><p>관리자 전용</p></div></div>`;
   const tab=state.subPage.adminTab||'members';
   const pendingPwCount=state.pwRequests.filter(r=>r.status==='pending').length;
-  const tabs=[['members','👥 회원'],['posts','📝 게시글'],['promos','📢 홍보글'],['schedules','📅 일정·이벤트'],['pwreq','🔑 비번요청'+(pendingPwCount>0?' ('+pendingPwCount+')':'')]];
+  const tabs=[['members','👥 회원'],['posts','📝 게시글'],['promos','📢 홍보글'],['schedules','📅 일정·이벤트'],['pwreq','🔑 비번요청'+(pendingPwCount>0?' ('+pendingPwCount+')':'')],['withdrawals','🚫 탈퇴이력('+state.withdrawals.length+')']];
   const tabHtml=`<div class="tabs">${tabs.map(([id,label])=>`<button class="tab ${tab===id?'active':''}" onclick="setSubPage('adminTab','${id}')">${label}</button>`).join('')}</div>`;
 
   let body='';
@@ -942,7 +943,7 @@ function renderAdmin(){
           </div>
         </div>
         <div style="display:flex;gap:6px">
-          <button class="btn btn-d btn-sm" onclick="if(confirm('${esc(m.name)} 회원을 삭제할까요?')){deleteMember('${m.id}')}">삭제</button>
+          <button class="btn btn-d btn-sm" onclick="showForceWithdraw('${m.id}','${esc(m.name)}')">강제 탈퇴</button>
         </div>
       </div>
     </div>`).join('')}`;
@@ -1000,6 +1001,7 @@ function renderAdmin(){
   }
 
   if(tab==='pwreq') body=renderAdminPwRequests();
+  if(tab==='withdrawals') body=renderWithdrawals();
 
   return `
   <div style="background:linear-gradient(135deg,#FFF0F0 0%,#fff 60%);border-bottom:1.5px solid var(--bdr);padding:24px 20px 18px">
@@ -1010,6 +1012,111 @@ function renderAdmin(){
     </div>
   </div>
   <div class="content">${tabHtml}${body}</div>`;
+}
+
+// ====== 강제 탈퇴 ======
+function showForceWithdraw(memberId, memberName){
+  // 모달 생성
+  const overlay=document.createElement('div');
+  overlay.id='fw-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(45,31,31,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;backdrop-filter:blur(4px)';
+  overlay.innerHTML=`
+    <div style="background:#fff;border:1.5px solid var(--bdr);border-radius:20px;padding:32px;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(232,85,85,.2)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <div style="width:36px;height:36px;border-radius:10px;background:#fff0f0;display:flex;align-items:center;justify-content:center;font-size:18px">🚫</div>
+        <h3 style="font-size:17px;font-weight:800;color:var(--red)">강제 탈퇴</h3>
+      </div>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:20px">
+        <strong style="color:var(--txt)">${memberName}</strong> 회원을 강제 탈퇴 처리합니다.<br>탈퇴 후 해당 회원은 로그인이 불가합니다.
+      </p>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:13px;color:var(--muted);font-weight:600;margin-bottom:6px">탈퇴 사유 (필수)</label>
+        <select id="fw-reason-sel" onchange="document.getElementById('fw-reason-custom').style.display=this.value==='직접입력'?'block':'none'"
+          style="width:100%;padding:11px 14px;background:var(--sur2);border:1.5px solid var(--bdr);border-radius:12px;color:var(--txt);font-family:'Noto Sans KR',sans-serif;font-size:13px;outline:none;margin-bottom:8px">
+          <option value="">사유 선택</option>
+          <option>졸업/수료</option>
+          <option>자진 탈퇴 요청</option>
+          <option>장기 미활동</option>
+          <option>규정 위반</option>
+          <option>직접입력</option>
+        </select>
+        <textarea id="fw-reason-custom" placeholder="탈퇴 사유를 직접 입력하세요"
+          style="display:none;width:100%;padding:11px 14px;background:var(--sur2);border:1.5px solid var(--bdr);border-radius:12px;color:var(--txt);font-family:'Noto Sans KR',sans-serif;font-size:13px;outline:none;resize:vertical;min-height:70px"></textarea>
+      </div>
+      <div id="fw-err" style="display:none;color:var(--red);font-size:12px;padding:8px 12px;background:#fff0f0;border-radius:8px;margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="document.getElementById('fw-overlay').remove()"
+          style="padding:9px 18px;border-radius:10px;border:1.5px solid var(--bdr);background:transparent;color:var(--muted);cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-weight:600;font-size:13px">취소</button>
+        <button onclick="doForceWithdraw('${memberId}','${memberName}')"
+          style="padding:9px 18px;border-radius:10px;border:none;background:var(--red);color:#fff;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:13px;box-shadow:0 2px 8px rgba(232,85,85,.3)">🚫 강제 탈퇴</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function doForceWithdraw(memberId, memberName){
+  const sel=document.getElementById('fw-reason-sel');
+  const custom=document.getElementById('fw-reason-custom');
+  const err=document.getElementById('fw-err');
+  let reason=sel.value==='직접입력'?custom.value.trim():sel.value;
+  if(!reason){err.textContent='탈퇴 사유를 선택하거나 입력해주세요.';err.style.display='block';return;}
+
+  const member=state.members.find(m=>m.id===memberId);
+  if(member){
+    // 탈퇴 이력 저장
+    state.withdrawals.push({
+      id:uid(),
+      memberId, memberName,
+      studentYear:member.studentYear,
+      gender:member.gender,
+      clubs:member.clubs,
+      status:member.status,
+      reason,
+      withdrawnAt:new Date().toISOString(),
+      withdrawnBy:'관리자',
+    });
+    // 회원 삭제
+    state.members=state.members.filter(m=>m.id!==memberId);
+    save();
+  }
+  document.getElementById('fw-overlay').remove();
+  render();
+}
+
+function renderWithdrawals(){
+  const list=[...state.withdrawals].reverse();
+  return `
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <h2 class="sec-title" style="margin:0">강제 탈퇴 이력 (${list.length}건)</h2>
+    ${list.length>0?`<button class="btn btn-g btn-sm" onclick="if(confirm('탈퇴 이력을 전체 삭제할까요?')){state.withdrawals=[];save();render()}">이력 초기화</button>`:''}
+  </div>
+  ${list.length===0?`<div class="empty"><div class="ico">🚫</div><p>강제 탈퇴 이력이 없습니다.</p></div>`:
+  list.map(w=>`
+  <div class="card" style="margin-bottom:10px;padding:16px 20px;border-left:4px solid var(--red)">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="width:34px;height:34px;border-radius:10px;background:#fff0f0;border:1.5px solid rgba(232,85,85,.3);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--red);font-size:14px">${esc(w.memberName[0])}</div>
+          <div>
+            <div style="font-weight:700;font-size:14px">${esc(w.memberName)}(${String(w.studentYear).slice(2)})
+              <span style="font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;background:${w.status==='graduated'?'#F28B8B':'#2E7EC7'};color:#fff;margin-left:4px">${w.status==='graduated'?'PS0':'PS1'}</span>
+            </div>
+            <div style="font-size:12px;color:var(--muted)">${w.studentYear}학번 · ${w.gender==='male'?'남':w.gender==='female'?'여':'기타'}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">
+          ${(w.clubs||[]).map(c=>`<span style="padding:1px 8px;border-radius:10px;background:${CLUBS[c]?.color}15;color:${CLUBS[c]?.color};font-size:11px;font-weight:700">${CLUBS[c]?.name}</span>`).join('')}
+        </div>
+        <div style="font-size:12px;color:var(--red);font-weight:600;background:#fff0f0;padding:4px 10px;border-radius:8px;display:inline-block">
+          사유: ${esc(w.reason)}
+        </div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:11px;color:var(--muted)">${fmtShort(w.withdrawnAt)} 처리</div>
+        <div style="font-size:11px;color:var(--light);margin-top:2px">${w.withdrawnBy}</div>
+      </div>
+    </div>
+  </div>`).join('')}`;
 }
 
 function deleteMember(id){state.members=state.members.filter(m=>m.id!==id);render();}
