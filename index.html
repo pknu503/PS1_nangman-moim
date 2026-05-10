@@ -316,6 +316,10 @@ function startPolling(){
   if(_pollTimer)clearInterval(_pollTimer);
   _pollTimer=setInterval(async()=>{
     if(!state.user)return;
+    // 모달이 열려 있으면 render() 건너뜀 (모달 강제 닫힘 방지)
+    if(document.getElementById('edit-overlay')||
+       document.getElementById('fw-overlay')||
+       document.getElementById('sw-overlay'))return;
     await loadFromFirebase();
     render();
   },5000);
@@ -1562,22 +1566,25 @@ function doEditProfile(){
   err.style.display='none';ok.style.display='none';
   if(!name){err.textContent='이름을 입력해주세요.';err.style.display='block';return;}
   if(!window._editClubs||window._editClubs.length===0){err.textContent='동아리를 선택해주세요.';err.style.display='block';return;}
-  // 이름 중복 체크 (자기 자신 제외)
-  const dup=state.members.find(m=>m.name===name&&m.studentYear==year&&m.id!==state.user.id);
+  // 이름 중복 체크 (자기 자신 제외, == 로 타입 무관 비교)
+  const dup=state.members.find(m=>m.name===name&&String(m.studentYear)===String(year)&&m.id!==state.user.id);
   if(dup){err.textContent='같은 이름+학번 조합이 이미 존재합니다.';err.style.display='block';return;}
   const idx=state.members.findIndex(m=>m.id===state.user.id);
-  if(idx>=0){
-    state.members[idx].name=name;
-    state.members[idx].studentYear=year;
-    state.members[idx].gender=gender;
-    state.members[idx].status=window._editStatus;
-    state.members[idx].clubs=window._editClubs;
-    state.user=state.members[idx];
-    saveLocal();
-    fbPatch('members',{[state.user.id]:state.members[idx]});
-    ok.textContent='✅ 정보가 저장되었습니다!';ok.style.display='block';
-    setTimeout(()=>{document.getElementById('edit-overlay').remove();render();},900);
-  }
+  if(idx<0){err.textContent='회원 정보를 찾을 수 없습니다.';err.style.display='block';return;}
+  // 수정 적용
+  state.members[idx].name=name;
+  state.members[idx].studentYear=year;
+  state.members[idx].gender=gender;
+  state.members[idx].status=window._editStatus||'active';
+  state.members[idx].clubs=[...window._editClubs];
+  state.user=state.members[idx];
+  saveLocal();
+  fbPatch('members',{[state.user.id]:state.members[idx]});
+  // 모달 닫고 화면 갱신
+  const overlay=document.getElementById('edit-overlay');
+  if(overlay)overlay.remove();
+  alert('✅ 정보가 저장되었습니다!');
+  render();
 }
 
 // ============ 자진 탈퇴 ============
