@@ -263,14 +263,18 @@ function renderRegister(){
       <div class="pw-wrap"><input class="inp" id="rg-pw2" type="password" placeholder="비밀번호 재입력" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">
       <button class="pw-eye" onclick="togglePw('rg-pw2',this)">👁️</button></div></div>
     <div><label class="lbl">가입 동아리 (복수 선택 가능)</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px" id="club-sel">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
         ${Object.values(CLUBS).map(c=>`
-        <label style="display:flex;align-items:center;justify-content:center;gap:7px;padding:8px 13px;border-radius:10px;cursor:pointer;border:2px solid var(--bdr);background:var(--sur2);transition:all .15s;flex:1;min-width:85px;text-align:center" id="lbl-${c.id}" onclick="toggleClubSel('${c.id}')">
-          <input type="checkbox" id="chk-${c.id}" style="display:none">
+        <button type="button"
+          id="clubbtn-${c.id}"
+          onclick="toggleClubSel('${c.id}')"
+          style="display:flex;align-items:center;justify-content:center;gap:7px;padding:10px 16px;border-radius:10px;cursor:pointer;border:2px solid var(--bdr);background:var(--sur2);transition:all .2s;flex:1;min-width:90px;font-family:'Noto Sans KR',sans-serif">
           ${logoImg(c,22,5)}
-          <span style="font-size:12px;font-weight:600;color:var(--muted)" id="clbtxt-${c.id}">${c.name}</span>
-        </label>`).join('')}
+          <span style="font-size:12px;font-weight:700;color:var(--muted)" id="clbtxt-${c.id}">${c.name}</span>
+          <span id="chkmark-${c.id}" style="display:none;font-size:12px">✓</span>
+        </button>`).join('')}
       </div>
+      <div id="club-sel-info" style="margin-top:8px;font-size:12px;color:var(--muted);min-height:20px"></div>
     </div>
     <div id="rg-err" style="color:var(--red);font-size:13px;display:none;padding:8px 12px;background:#fff0f0;border-radius:8px"></div>
     <div id="rg-ok" style="color:var(--green);font-size:13px;display:none;padding:8px 12px;background:#f0fff6;border-radius:8px"></div>
@@ -298,16 +302,33 @@ function selectStatus(val){
 }
 function toggleClubSel(id){
   const idx=_selClubs.indexOf(id);
-  if(idx>=0)_selClubs.splice(idx,1);else _selClubs.push(id);
+  if(idx>=0) _selClubs.splice(idx,1);
+  else _selClubs.push(id);
+
   Object.values(CLUBS).forEach(c=>{
-    const lbl=document.getElementById('lbl-'+c.id);
+    const btn=document.getElementById('clubbtn-'+c.id);
     const txt=document.getElementById('clbtxt-'+c.id);
-    if(!lbl)return;
+    const chk=document.getElementById('chkmark-'+c.id);
+    if(!btn) return;
     const sel=_selClubs.includes(c.id);
-    lbl.style.borderColor=sel?c.color:'var(--bdr)';
-    lbl.style.background=sel?c.color+'15':'var(--sur2)';
-    txt.style.color=sel?c.color:'var(--muted)';
+    btn.style.borderColor = sel ? c.color : 'var(--bdr)';
+    btn.style.background  = sel ? c.color+'18' : 'var(--sur2)';
+    btn.style.boxShadow   = sel ? '0 2px 8px '+c.color+'40' : 'none';
+    if(txt) txt.style.color = sel ? c.color : 'var(--muted)';
+    if(chk){ chk.style.display=sel?'inline':'none'; chk.style.color=c.color; }
   });
+
+  // 선택된 동아리 안내 텍스트
+  const info=document.getElementById('club-sel-info');
+  if(info){
+    if(_selClubs.length===0){
+      info.textContent='동아리를 선택해주세요.';
+      info.style.color='var(--muted)';
+    } else {
+      const names=_selClubs.map(cid=>CLUBS[cid]?.name).join(', ');
+      info.innerHTML='✅ 선택된 동아리: <strong style="color:var(--pink)">'+names+'</strong>';
+    }
+  }
 }
 
 function showErr(id,msg){const el=document.getElementById(id);if(el){el.textContent=msg;el.style.display='block';}}
