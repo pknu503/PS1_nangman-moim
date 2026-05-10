@@ -156,6 +156,41 @@ async function fbSet(path,val){
   }
 }
 
+async function fbPatch(path,obj){
+  try{
+    await fetch(DB+'/'+path+'.json',{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(obj)
+    });
+  }catch(e){console.error('fbPatch error',e.message);}
+}
+
+async function fbDelete(path){
+  try{
+    await fetch(DB+'/'+path+'.json',{method:'DELETE'});
+  }catch(e){console.error('fbDelete error',e.message);}
+}
+
+function arrToObj(arr,keyField='id'){
+  const obj={};
+  (arr||[]).forEach(item=>{
+    if(item&&item[keyField]) obj[item[keyField]]=item;
+  });
+  return obj;
+}
+
+function attendToObj(arr){
+  const obj={};
+  (arr||[]).forEach(a=>{
+    if(a&&a.key){
+      const safeKey=a.key.replace(/[^a-zA-Z0-9]/g,'_');
+      obj[safeKey]=a;
+    }
+  });
+  return obj;
+}
+
 // localStorage
 function ld(k,d){try{const r=localStorage.getItem(k);return r?JSON.parse(r):d}catch{return d}}
 function sv(k,v){localStorage.setItem(k,JSON.stringify(v))}
@@ -186,14 +221,29 @@ function saveLocal(){
 
 function save(){
   saveLocal();
-  fbSet('members', state.members||[]);
-  fbSet('posts', state.posts||[]);
-  fbSet('schedules', state.schedules||[]);
-  fbSet('events', state.events||[]);
-  fbSet('attendance', state.attendance||[]);
-  fbSet('promos', state.promos||[]);
-  fbSet('pwRequests', state.pwRequests||[]);
-  fbSet('withdrawals', state.withdrawals||[]);
+  // PATCH: 기존 데이터와 병합 저장 (다른 사람 데이터 덮어쓰기 방지)
+  fbPatch('members',    arrToObj(state.members));
+  fbPatch('posts',      arrToObj(state.posts));
+  fbPatch('schedules',  arrToObj(state.schedules));
+  fbPatch('events',     arrToObj(state.events));
+  fbPatch('promos',     arrToObj(state.promos));
+  fbPatch('pwRequests', arrToObj(state.pwRequests));
+  fbPatch('withdrawals',arrToObj(state.withdrawals));
+  fbPatch('attendance', attendToObj(state.attendance));
+}
+
+// 항목 삭제 시 Firebase에서도 삭제
+async function fbRemoveItem(collection, id){
+  state[collection]=state[collection].filter(x=>x.id!==id);
+  saveLocal();
+  await fbDelete(collection+'/'+id);
+  render();
+}
+async function fbRemoveAttend(key){
+  state.attendance=state.attendance.filter(a=>a.key!==key);
+  saveLocal();
+  const safeKey=key.replace(/[^a-zA-Z0-9]/g,'_');
+  await fbDelete('attendance/'+safeKey);
 }
 
 function toArr(v){
@@ -459,7 +509,8 @@ function doRegister(){
   const m={id:uid(),name,studentYear:year,gender,clubs:[..._selClubs],password:pw,status:_selStatus,joinedAt:new Date().toISOString()};
   state.members.push(m);state.user=m;state.isAdmin=false;state.page='home';
   _selClubs=[];_selStatus='active';
-  save();
+  saveLocal();
+  fbPatch('members',{[m.id]:m});
   render();
   startPolling();
   setTimeout(()=>loadFromFirebase().then(()=>render()), 1500);
@@ -639,19 +690,24 @@ function submitPromo(){
   const title=document.getElementById('pf-title').value.trim();
   const content=document.getElementById('pf-content').value.trim();
   if(!clubId||!title||!content)return alert('모든 항목을 입력해주세요.');
+  const newPromos={};
   if(clubId==='all'){
     Object.keys(CLUBS).forEach(cid=>{
-      state.promos.push({id:uid(),clubId:cid,authorName:state.user.name,title,content,
-        isGlobal:true,createdAt:new Date().toISOString()});
+      const item={id:uid(),clubId:cid,authorName:state.user.name,title,content,isGlobal:true,createdAt:new Date().toISOString()};
+      state.promos.push(item);
+      newPromos[item.id]=item;
     });
   } else {
-    state.promos.push({id:uid(),clubId,authorName:state.user.name,title,content,
-      isGlobal:false,createdAt:new Date().toISOString()});
+    const item={id:uid(),clubId,authorName:state.user.name,title,content,isGlobal:false,createdAt:new Date().toISOString()};
+    state.promos.push(item);
+    newPromos[item.id]=item;
   }
-  save();render();
+  saveLocal();
+  fbPatch('promos',newPromos);
+  render();
 }
 
-function deletePromo(id){if(confirm('삭제할까요?')){state.promos=state.promos.filter(p=>p.id!==id);save();render();}}
+function deletePromo(id){if(confirm('삭제할까요?')){fbRemoveItem('promos',id);}}
 
 // ============ CLUB ============
 function renderClub(clubId){
@@ -725,11 +781,18 @@ function submitPost(clubId){
   const content=document.getElementById('post-content').value.trim();
   const isAnon=document.getElementById('post-anon').checked;
   if(!content)return;
-  state.posts.push({id:uid(),clubId,authorId:state.user.id,authorName:isAnon?'익명':state.user.name,isAnon,content,likes:0,createdAt:new Date().toISOString()});
-  save();render();
+  const item={id:uid(),clubId,authorId:state.user.id,authorName:isAnon?'익명':state.user.name,isAnon,content,likes:0,createdAt:new Date().toISOString()};
+  state.posts.push(item);
+  saveLocal();
+  fbPatch('posts',{[item.id]:item});
+  render();
 }
-function deletePost(id){if(confirm('삭제할까요?')){state.posts=state.posts.filter(p=>p.id!==id);save();render();}}
-function likePost(id){const p=state.posts.find(x=>x.id===id);if(p)p.likes=(p.likes||0)+1;save();render();}
+function deletePost(id){if(confirm('삭제할까요?')){fbRemoveItem('posts',id);}}
+function likePost(id){
+  const p=state.posts.find(x=>x.id===id);
+  if(p){p.likes=(p.likes||0)+1;saveLocal();fbPatch('posts',{[id]:p});}
+  render();
+}
 
 function renderClubSchedule(clubId,club){
   const scheds=state.schedules.filter(s=>s.clubId===clubId);
@@ -775,10 +838,13 @@ function submitSched(clubId){
   const type=document.getElementById('sf-type').value;
   const week=document.getElementById('sf-week').value.trim();
   if(!title||!date)return alert('제목과 날짜를 입력해주세요.');
-  state.schedules.push({id:uid(),clubId,title,date,type,week,createdAt:new Date().toISOString()});
-  save();render();
+  const item={id:uid(),clubId,title,date,type,week,createdAt:new Date().toISOString()};
+  state.schedules.push(item);
+  saveLocal();
+  fbPatch('schedules',{[item.id]:item});
+  render();
 }
-function deleteSched(id){if(confirm('삭제할까요?')){state.schedules=state.schedules.filter(s=>s.id!==id);save();render();}}
+function deleteSched(id){if(confirm('삭제할까요?')){fbRemoveItem('schedules',id);}}
 
 function renderClubEvent(clubId,club){
   const events=state.events.filter(e=>e.clubId===clubId);
@@ -821,10 +887,13 @@ function submitEvent(clubId){
   const date=document.getElementById('ef-date').value;
   const description=document.getElementById('ef-desc').value.trim();
   if(!title||!date)return alert('제목과 날짜를 입력해주세요.');
-  state.events.push({id:uid(),clubId,title,date,description,createdAt:new Date().toISOString()});
-  save();render();
+  const item={id:uid(),clubId,title,date,description,createdAt:new Date().toISOString()};
+  state.events.push(item);
+  saveLocal();
+  fbPatch('events',{[item.id]:item});
+  render();
 }
-function deleteEvent(id){if(confirm('삭제할까요?')){state.events=state.events.filter(e=>e.id!==id);save();render();}}
+function deleteEvent(id){if(confirm('삭제할까요?')){fbRemoveItem('events',id);}}
 
 function renderClubAttend(clubId,club){
   const clubMembers=state.members.filter(m=>m.clubs?.includes(clubId));
@@ -878,8 +947,12 @@ function renderClubAttend(clubId,club){
 function markAttend(clubId,memberId,date,status){
   const key=`${clubId}_${memberId}_${date}`;
   state.attendance=state.attendance.filter(a=>a.key!==key);
-  state.attendance.push({key,clubId,memberId,date,status});
-  save();render();
+  const item={key,clubId,memberId,date,status};
+  state.attendance.push(item);
+  saveLocal();
+  const safeKey=key.replace(/[^a-zA-Z0-9]/g,'_');
+  fbPatch('attendance',{[safeKey]:item});
+  render();
 }
 
 function renderClubMembers(clubId,club){
@@ -1191,14 +1264,15 @@ function doForceWithdraw(memberId, memberName){
   if(!reason){err.textContent='탈퇴 사유를 선택하거나 입력해주세요.';err.style.display='block';return;}
   const member=state.members.find(m=>m.id===memberId);
   if(member){
-    state.withdrawals.push({
-      id:uid(), memberId, memberName,
+    const wItem={id:uid(), memberId, memberName,
       studentYear:member.studentYear, gender:member.gender,
       clubs:member.clubs, status:member.status, reason,
-      withdrawnAt:new Date().toISOString(), withdrawnBy:'관리자',
-    });
+      withdrawnAt:new Date().toISOString(), withdrawnBy:'관리자'};
+    state.withdrawals.push(wItem);
     state.members=state.members.filter(m=>m.id!==memberId);
-    save();
+    saveLocal();
+    fbPatch('withdrawals',{[wItem.id]:wItem});
+    fbDelete('members/'+memberId);
   }
   document.getElementById('fw-overlay').remove();
   render();
@@ -1209,7 +1283,7 @@ function renderWithdrawals(){
   return `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
     <h2 class="sec-title" style="margin:0">강제 탈퇴 이력 (${list.length}건)</h2>
-    ${list.length>0?`<button class="btn btn-g btn-sm" onclick="if(confirm('탈퇴 이력을 전체 삭제할까요?')){state.withdrawals=[];save();render()}">이력 초기화</button>`:''}
+    ${list.length>0?`<button class="btn btn-g btn-sm" onclick="if(confirm('탈퇴 이력을 전체 삭제할까요?')){state.withdrawals=[];saveLocal();fbSet('withdrawals',{});render()}">이력 초기화</button>`:''}
   </div>
   ${list.length===0?`<div class="empty"><div class="ico">🚫</div><p>강제 탈퇴 이력이 없습니다.</p></div>`:
   list.map(w=>`
@@ -1337,8 +1411,12 @@ function doChangePw(){
   if(nw===old){err.textContent='새 비밀번호가 기존 비밀번호와 같습니다.';err.style.display='block';return;}
   if(nw!==nw2){err.textContent='새 비밀번호가 일치하지 않습니다.';err.style.display='block';return;}
   const idx=state.members.findIndex(m=>m.id===state.user.id);
-  if(idx>=0){state.members[idx].password=nw;state.user=state.members[idx];}
-  save();
+  if(idx>=0){
+    state.members[idx].password=nw;
+    state.user=state.members[idx];
+    saveLocal();
+    fbPatch('members',{[state.user.id]:state.members[idx]});
+  }
   ok.textContent='✅ 비밀번호가 변경되었습니다!';ok.style.display='block';
   document.getElementById('cpw-old').value='';
   document.getElementById('cpw-new').value='';
@@ -1378,12 +1456,12 @@ function submitPwRequest(){
   const msg=document.getElementById('pwreq-msg').value.trim();
   const already=state.pwRequests.find(r=>r.memberId===state.user.id&&r.status==='pending');
   if(already){alert('이미 처리 대기 중인 요청이 있습니다.');return;}
-  state.pwRequests.push({
-    id:uid(), memberId:state.user.id, memberName:state.user.name,
+  const item={id:uid(), memberId:state.user.id, memberName:state.user.name,
     studentYear:state.user.studentYear, msg, status:'pending',
-    createdAt:new Date().toISOString(), adminReply:'', repliedAt:null,
-  });
-  save();
+    createdAt:new Date().toISOString(), adminReply:'', repliedAt:null};
+  state.pwRequests.push(item);
+  saveLocal();
+  fbPatch('pwRequests',{[item.id]:item});
   alert('✅ 요청이 전송되었습니다!');
   render();
 }
@@ -1438,8 +1516,10 @@ function replyPwRequest(reqId){
     state.pwRequests[idx].status='done';
     state.pwRequests[idx].adminReply=reply;
     state.pwRequests[idx].repliedAt=new Date().toISOString();
+    saveLocal();
+    fbPatch('pwRequests',{[reqId]:state.pwRequests[idx]});
   }
-  save();render();
+  render();
 }
 
 function showChangePw(){
