@@ -241,7 +241,7 @@ function startPolling(){
     if(!state.user)return;
     await loadFromFirebase();
     render();
-  },10000); // 10초마다
+  },5000); // 5초마다
 }
 function stopPolling(){if(_pollTimer){clearInterval(_pollTimer);_pollTimer=null;}}
 
@@ -431,7 +431,12 @@ function doRegister(){
   if(state.members.find(m=>m.name===name&&m.studentYear===year))return showErr('rg-err','이미 등록된 이름+학번 조합입니다.');
   const m={id:uid(),name,studentYear:year,gender,clubs:[..._selClubs],password:pw,status:_selStatus,joinedAt:new Date().toISOString()};
   state.members.push(m);state.user=m;state.isAdmin=false;state.page='home';
-  _selClubs=[];_selStatus='active';save();loadFromFirebase().then(()=>{render();startPolling();});
+  _selClubs=[];_selStatus='active';
+  save(); // Firebase에 즉시 저장
+  render(); // 일단 현재 상태로 화면 표시
+  startPolling();
+  // 1.5초 후 Firebase에서 확인 로드
+  setTimeout(()=>loadFromFirebase().then(()=>render()), 1500);
 }
 
 // ============ APP SHELL ============
@@ -473,7 +478,16 @@ function renderApp(){
   else if(pg==='profile')mc.innerHTML=renderProfile();
 }
 
-function goPage(id){state.page=id;state.subPage={};render();}
+function goPage(id){
+  state.page=id;
+  state.subPage={};
+  // 통합현황·관리자 페이지는 최신 데이터 즉시 로드
+  if(id==='integrated'||id==='admin'){
+    loadFromFirebase().then(()=>render());
+  } else {
+    render();
+  }
+}
 function doLogout(){stopPolling();state.user=null;state.isAdmin=false;state.authMode='login';render();}
 
 // ============ HOME ============
@@ -593,10 +607,10 @@ function submitPromo(){
     state.promos.push({id:uid(),clubId,authorName:state.user.name,title,content,
       isGlobal:false,createdAt:new Date().toISOString()});
   }
-  render();
+  save();render();
 }
 
-function deletePromo(id){if(confirm('삭제할까요?')){state.promos=state.promos.filter(p=>p.id!==id);render();}}
+function deletePromo(id){if(confirm('삭제할까요?')){state.promos=state.promos.filter(p=>p.id!==id);save();render();}}
 
 // ============ CLUB ============
 function renderClub(clubId){
@@ -671,10 +685,10 @@ function submitPost(clubId){
   const isAnon=document.getElementById('post-anon').checked;
   if(!content)return;
   state.posts.push({id:uid(),clubId,authorId:state.user.id,authorName:isAnon?'익명':state.user.name,isAnon,content,likes:0,createdAt:new Date().toISOString()});
-  render();
+  save();render();
 }
-function deletePost(id){if(confirm('삭제할까요?')){state.posts=state.posts.filter(p=>p.id!==id);render();}}
-function likePost(id){const p=state.posts.find(x=>x.id===id);if(p)p.likes=(p.likes||0)+1;render();}
+function deletePost(id){if(confirm('삭제할까요?')){state.posts=state.posts.filter(p=>p.id!==id);save();render();}}
+function likePost(id){const p=state.posts.find(x=>x.id===id);if(p)p.likes=(p.likes||0)+1;save();render();}
 
 function renderClubSchedule(clubId,club){
   const scheds=state.schedules.filter(s=>s.clubId===clubId);
@@ -721,9 +735,9 @@ function submitSched(clubId){
   const week=document.getElementById('sf-week').value.trim();
   if(!title||!date)return alert('제목과 날짜를 입력해주세요.');
   state.schedules.push({id:uid(),clubId,title,date,type,week,createdAt:new Date().toISOString()});
-  render();
+  save();render();
 }
-function deleteSched(id){if(confirm('삭제할까요?')){state.schedules=state.schedules.filter(s=>s.id!==id);render();}}
+function deleteSched(id){if(confirm('삭제할까요?')){state.schedules=state.schedules.filter(s=>s.id!==id);save();render();}}
 
 function renderClubEvent(clubId,club){
   const events=state.events.filter(e=>e.clubId===clubId);
@@ -767,9 +781,9 @@ function submitEvent(clubId){
   const description=document.getElementById('ef-desc').value.trim();
   if(!title||!date)return alert('제목과 날짜를 입력해주세요.');
   state.events.push({id:uid(),clubId,title,date,description,createdAt:new Date().toISOString()});
-  render();
+  save();render();
 }
-function deleteEvent(id){if(confirm('삭제할까요?')){state.events=state.events.filter(e=>e.id!==id);render();}}
+function deleteEvent(id){if(confirm('삭제할까요?')){state.events=state.events.filter(e=>e.id!==id);save();render();}}
 
 function renderClubAttend(clubId,club){
   const clubMembers=state.members.filter(m=>m.clubs?.includes(clubId));
@@ -824,7 +838,7 @@ function markAttend(clubId,memberId,date,status){
   const key=`${clubId}_${memberId}_${date}`;
   state.attendance=state.attendance.filter(a=>a.key!==key);
   state.attendance.push({key,clubId,memberId,date,status});
-  render();
+  save();render();
 }
 
 function renderClubMembers(clubId,club){
@@ -843,6 +857,7 @@ function renderClubMembers(clubId,club){
 
 // ============ INTEGRATED ============
 function renderIntegrated(){
+  console.log('[통합현황] members:'+state.members.length+' posts:'+state.posts.length);
   const stats=Object.values(CLUBS).map(club=>{
     const cm=state.members.filter(m=>m.clubs?.includes(club.id));
     const male=cm.filter(m=>m.gender==='male').length;
@@ -982,8 +997,8 @@ function renderIntegrated(){
         <h1 style="font-size:19px;font-weight:800;font-family:'Nanum Myeongjo',serif">통합 현황</h1>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <p style="color:var(--muted);font-size:12px;padding-left:12px">3개 동아리 실시간 통계 · 누구나 볼 수 있습니다</p>
-        <button onclick="loadFromFirebase().then(()=>render())" class="btn btn-g btn-sm" style="font-size:11px">🔄 새로고침</button>
+        <p style="color:var(--muted);font-size:12px;padding-left:12px">3개 동아리 실시간 통계 · 누구나 볼 수 있습니다 · 회원 ${state.members.length}명 로드됨</p>
+        <button onclick="loadFromFirebase().then(()=>render())" class="btn btn-p btn-sm" style="font-size:11px">🔄 새로고침</button>
       </div>
     </div>
   </div>
@@ -1192,7 +1207,7 @@ function renderWithdrawals(){
   </div>`).join('')}`;
 }
 
-function deleteMember(id){state.members=state.members.filter(m=>m.id!==id);render();}
+function deleteMember(id){state.members=state.members.filter(m=>m.id!==id);save();render();}
 
 // ============ PROFILE ============
 function renderProfile(){
@@ -1306,6 +1321,7 @@ function doChangePw(){
   // 저장
   const idx=state.members.findIndex(m=>m.id===state.user.id);
   if(idx>=0){state.members[idx].password=nw;state.user=state.members[idx];}
+  save();
   ok.textContent='✅ 비밀번호가 변경되었습니다!';ok.style.display='block';
   document.getElementById('cpw-old').value='';
   document.getElementById('cpw-new').value='';
@@ -1416,7 +1432,6 @@ function replyPwRequest(reqId){
   }
   save();render();
 }
-
 
 function showChangePw(){
   document.getElementById('profile-pw-area').innerHTML=renderChangePw();
