@@ -1315,6 +1315,53 @@ function renderProfile(){
     return{...club,present,late,absent,total,rate:total>0?Math.round((present/total)*100):0};
   });
 
+  // 내 정보 카드 (항상 표시)
+  const infoCard=`
+  <div class="card" style="margin-bottom:20px;border:1.5px solid var(--pink-l)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="width:4px;height:20px;background:var(--pink);border-radius:2px"></div>
+        <h3 style="font-size:16px;font-weight:700">내 정보</h3>
+      </div>
+      <button class="btn btn-p btn-sm" onclick="showEditProfile()">✏️ 정보 수정</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
+      <div style="background:var(--sur2);border-radius:12px;padding:14px 16px">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px">이름</div>
+        <div style="font-size:16px;font-weight:800;color:var(--txt)">${esc(u.name)}</div>
+      </div>
+      <div style="background:var(--sur2);border-radius:12px;padding:14px 16px">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px">학번</div>
+        <div style="font-size:16px;font-weight:800;color:var(--txt)">${u.studentYear}학번</div>
+      </div>
+      <div style="background:var(--sur2);border-radius:12px;padding:14px 16px">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px">성별</div>
+        <div style="font-size:16px;font-weight:800;color:var(--txt)">${u.gender==='male'?'남성':u.gender==='female'?'여성':'기타'}</div>
+      </div>
+      <div style="background:var(--sur2);border-radius:12px;padding:14px 16px">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px">재적 상태</div>
+        <div style="font-size:15px;font-weight:800">${psMark(u.status)} <span style="margin-left:4px">${u.status==='graduated'?'졸업생':'현역'}</span></div>
+      </div>
+      <div style="background:var(--sur2);border-radius:12px;padding:14px 16px">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px">소속 동아리</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">${myClubs.length===0?'<span style="color:var(--light);font-size:13px">없음</span>':myClubs.map(c=>'<span style="padding:2px 8px;border-radius:10px;background:'+(CLUBS[c]?.color||'#999')+'15;color:'+(CLUBS[c]?.color||'#999')+';font-size:12px;font-weight:700">'+(CLUBS[c]?.name||c)+'</span>').join('')}</div>
+      </div>
+      <div style="background:var(--sur2);border-radius:12px;padding:14px 16px">
+        <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:4px">비밀번호</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="pw-display" style="font-size:18px;letter-spacing:3px;font-weight:800;color:var(--txt)">••••••••</span>
+          <button onclick="togglePwDisplay()" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--muted)" id="pw-display-btn">👁️</button>
+        </div>
+        <div id="pw-real" style="display:none;font-size:13px;color:var(--pink);font-weight:700;margin-top:4px">${esc(u.password||'')}</div>
+      </div>
+    </div>
+    <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-g btn-sm" onclick="showChangePw()">🔑 비밀번호 변경</button>
+      <button class="btn btn-g btn-sm" onclick="showPwReq()">🆘 비밀번호 찾기 요청</button>
+      <button class="btn btn-d btn-sm" style="margin-left:auto" onclick="showSelfWithdraw()">🚪 회원 탈퇴</button>
+    </div>
+  </div>`;
+
   return `
   <div style="background:linear-gradient(135deg,#FFF0F0 0%,#fff 70%);border-bottom:1.5px solid var(--bdr);padding:36px 20px 28px">
     <div style="max-width:1100px;margin:0 auto;display:flex;align-items:center;gap:20px">
@@ -1323,15 +1370,12 @@ function renderProfile(){
         <h1 style="font-size:22px;font-weight:900;font-family:'Nanum Myeongjo',serif;margin-bottom:4px">${esc(u.name)}</h1>
         <p style="color:var(--muted);font-size:13px">${u.studentYear}학번 · ${u.gender==='male'?'남성':u.gender==='female'?'여성':'기타'}</p>
         <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">${myClubs.map(c=>`<span class="club-tag" style="color:${CLUBS[c]?.color};border-color:${CLUBS[c]?.color};background:${CLUBS[c]?.color}12;padding:3px 12px">${CLUBS[c]?.name}</span>`).join('')}</div>
-        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-g btn-sm" onclick="showChangePw()">🔑 비밀번호 변경</button>
-          <button class="btn btn-g btn-sm" onclick="showPwReq()">🆘 비밀번호 찾기 요청</button>
-        </div>
       </div>
     </div>
   </div>
   <div class="content">
-  <div id="profile-pw-area"></div>
+    <div id="profile-action-area"></div>
+    ${infoCard}
     <div class="g3" style="margin-bottom:24px">
       ${[['소속 동아리',myClubs.length,'개','var(--hora)'],['작성 게시글',myPosts.length,'개','var(--pink)'],['출석 기록',myAttend.reduce((a,c)=>a+c.total,0),'건','var(--theme)']].map(([label,val,unit,col])=>`
       <div class="card" style="text-align:center;border-top:3px solid ${col}">
@@ -1367,6 +1411,231 @@ function renderProfile(){
       </div>`;}).join('')}
     </div>
   </div>`;
+}
+
+// 비밀번호 보이기/숨기기 토글
+function togglePwDisplay(){
+  const display=document.getElementById('pw-display');
+  const real=document.getElementById('pw-real');
+  const btn=document.getElementById('pw-display-btn');
+  if(real.style.display==='none'){
+    real.style.display='block';
+    display.style.display='none';
+    btn.textContent='🙈';
+  } else {
+    real.style.display='none';
+    display.style.display='block';
+    btn.textContent='👁️';
+  }
+}
+
+// ============ 정보 수정 모달 ============
+function showEditProfile(){
+  const u=state.user;
+  const overlay=document.createElement('div');
+  overlay.id='edit-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(45,31,31,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;backdrop-filter:blur(4px);overflow-y:auto';
+
+  const clubBtns=Object.values(CLUBS).map(c=>{
+    const sel=(u.clubs||[]).includes(c.id);
+    return `<button type="button" id="edit-club-${c.id}" onclick="toggleEditClub('${c.id}')"
+      style="display:flex;align-items:center;gap:7px;padding:10px 14px;border-radius:10px;cursor:pointer;
+      border:2px solid ${sel?c.color:'var(--bdr)'};background:${sel?c.color+'18':'var(--sur2)'};
+      box-shadow:${sel?'0 2px 8px '+c.color+'40':'none'};transition:all .2s;font-family:'Noto Sans KR',sans-serif;flex:1;min-width:80px">
+      ${logoImg(c,20,5)}
+      <span style="font-size:12px;font-weight:700;color:${sel?c.color:'var(--muted)'}" id="edit-club-txt-${c.id}">${c.name}</span>
+      <span id="edit-club-chk-${c.id}" style="display:${sel?'inline':'none'};font-size:11px;color:${c.color}">✓</span>
+    </button>`;
+  }).join('');
+
+  overlay.innerHTML=`
+  <div style="background:#fff;border:1.5px solid var(--bdr);border-radius:20px;padding:32px;width:100%;max-width:480px;box-shadow:0 8px 32px rgba(242,139,139,.2);margin:auto">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+      <div style="width:36px;height:36px;border-radius:10px;background:var(--pink-s);display:flex;align-items:center;justify-content:center;font-size:18px">✏️</div>
+      <h3 style="font-size:18px;font-weight:800;color:var(--txt)">내 정보 수정</h3>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label class="lbl">이름</label>
+        <input class="inp" id="edit-name" value="${esc(u.name)}" placeholder="이름">
+      </div>
+      <div>
+        <label class="lbl">학번 (입학연도)</label>
+        <select class="inp" id="edit-year">
+          ${YEARS.map(y=>`<option value="${y}" ${u.studentYear==y?'selected':''}>${y}학번</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label class="lbl">성별</label>
+        <select class="inp" id="edit-gender">
+          <option value="female" ${u.gender==='female'?'selected':''}>여성</option>
+          <option value="male" ${u.gender==='male'?'selected':''}>남성</option>
+          <option value="other" ${u.gender==='other'?'selected':''}>기타</option>
+        </select>
+      </div>
+      <div>
+        <label class="lbl">재적 상태</label>
+        <div style="display:flex;gap:8px">
+          <button type="button" id="edit-status-active" onclick="setEditStatus('active')"
+            style="flex:1;padding:10px;border-radius:10px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-size:13px;font-weight:700;
+            border:2px solid ${u.status!=='graduated'?'#2E7EC7':'var(--bdr)'};background:${u.status!=='graduated'?'#f0f7ff':'var(--sur2)'};color:${u.status!=='graduated'?'#2E7EC7':'var(--muted)'}">
+            🎓 현역 <span style="font-size:9px;background:#2E7EC7;color:#fff;padding:1px 5px;border-radius:4px;margin-left:4px">PS1</span>
+          </button>
+          <button type="button" id="edit-status-graduated" onclick="setEditStatus('graduated')"
+            style="flex:1;padding:10px;border-radius:10px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-size:13px;font-weight:700;
+            border:2px solid ${u.status==='graduated'?'#F28B8B':'var(--bdr)'};background:${u.status==='graduated'?'#fff0f0':'var(--sur2)'};color:${u.status==='graduated'?'var(--pink)':'var(--muted)'}">
+            👨‍💼 졸업생 <span style="font-size:9px;background:#F28B8B;color:#fff;padding:1px 5px;border-radius:4px;margin-left:4px">PS0</span>
+          </button>
+        </div>
+      </div>
+      <div>
+        <label class="lbl">소속 동아리 (복수 선택 가능)</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">${clubBtns}</div>
+        <div id="edit-club-info" style="margin-top:6px;font-size:12px;color:var(--muted)"></div>
+      </div>
+      <div id="edit-err" style="display:none;color:var(--red);font-size:13px;padding:8px 12px;background:#fff0f0;border-radius:8px"></div>
+      <div id="edit-ok" style="display:none;color:var(--green);font-size:13px;padding:8px 12px;background:#f0fff6;border-radius:8px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+        <button onclick="document.getElementById('edit-overlay').remove()" class="btn btn-g btn-sm">취소</button>
+        <button onclick="doEditProfile()" class="btn btn-p btn-sm">💾 저장하기</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  // 현재 선택 상태 초기화
+  window._editClubs=[...(u.clubs||[])];
+  window._editStatus=u.status||'active';
+  updateEditClubInfo();
+}
+
+function setEditStatus(val){
+  window._editStatus=val;
+  const actBtn=document.getElementById('edit-status-active');
+  const gradBtn=document.getElementById('edit-status-graduated');
+  if(!actBtn||!gradBtn)return;
+  if(val==='active'){
+    actBtn.style.borderColor='#2E7EC7';actBtn.style.background='#f0f7ff';actBtn.style.color='#2E7EC7';
+    gradBtn.style.borderColor='var(--bdr)';gradBtn.style.background='var(--sur2)';gradBtn.style.color='var(--muted)';
+  } else {
+    gradBtn.style.borderColor='#F28B8B';gradBtn.style.background='#fff0f0';gradBtn.style.color='var(--pink)';
+    actBtn.style.borderColor='var(--bdr)';actBtn.style.background='var(--sur2)';actBtn.style.color='var(--muted)';
+  }
+}
+
+function toggleEditClub(id){
+  if(!window._editClubs) window._editClubs=[];
+  const idx=window._editClubs.indexOf(id);
+  if(idx>=0) window._editClubs.splice(idx,1);
+  else window._editClubs.push(id);
+  Object.values(CLUBS).forEach(c=>{
+    const btn=document.getElementById('edit-club-'+c.id);
+    const txt=document.getElementById('edit-club-txt-'+c.id);
+    const chk=document.getElementById('edit-club-chk-'+c.id);
+    if(!btn)return;
+    const sel=window._editClubs.includes(c.id);
+    btn.style.borderColor=sel?c.color:'var(--bdr)';
+    btn.style.background=sel?c.color+'18':'var(--sur2)';
+    btn.style.boxShadow=sel?'0 2px 8px '+c.color+'40':'none';
+    if(txt)txt.style.color=sel?c.color:'var(--muted)';
+    if(chk)chk.style.display=sel?'inline':'none';
+  });
+  updateEditClubInfo();
+}
+
+function updateEditClubInfo(){
+  const info=document.getElementById('edit-club-info');
+  if(!info)return;
+  if(!window._editClubs||window._editClubs.length===0){
+    info.textContent='동아리를 선택해주세요.';info.style.color='var(--muted)';
+  } else {
+    const names=window._editClubs.map(cid=>CLUBS[cid]?.name).join(', ');
+    info.innerHTML='✅ 선택: <strong style="color:var(--pink)">'+names+'</strong>';
+  }
+}
+
+function doEditProfile(){
+  const name=document.getElementById('edit-name').value.trim();
+  const year=document.getElementById('edit-year').value;
+  const gender=document.getElementById('edit-gender').value;
+  const err=document.getElementById('edit-err');
+  const ok=document.getElementById('edit-ok');
+  err.style.display='none';ok.style.display='none';
+  if(!name){err.textContent='이름을 입력해주세요.';err.style.display='block';return;}
+  if(!window._editClubs||window._editClubs.length===0){err.textContent='동아리를 선택해주세요.';err.style.display='block';return;}
+  // 이름 중복 체크 (자기 자신 제외)
+  const dup=state.members.find(m=>m.name===name&&m.studentYear==year&&m.id!==state.user.id);
+  if(dup){err.textContent='같은 이름+학번 조합이 이미 존재합니다.';err.style.display='block';return;}
+  const idx=state.members.findIndex(m=>m.id===state.user.id);
+  if(idx>=0){
+    state.members[idx].name=name;
+    state.members[idx].studentYear=year;
+    state.members[idx].gender=gender;
+    state.members[idx].status=window._editStatus;
+    state.members[idx].clubs=window._editClubs;
+    state.user=state.members[idx];
+    saveLocal();
+    fbPatch('members',{[state.user.id]:state.members[idx]});
+    ok.textContent='✅ 정보가 저장되었습니다!';ok.style.display='block';
+    setTimeout(()=>{document.getElementById('edit-overlay').remove();render();},900);
+  }
+}
+
+// ============ 자진 탈퇴 ============
+function showSelfWithdraw(){
+  const overlay=document.createElement('div');
+  overlay.id='sw-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(45,31,31,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;backdrop-filter:blur(4px)';
+  overlay.innerHTML=`
+  <div style="background:#fff;border:1.5px solid var(--bdr);border-radius:20px;padding:32px;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(232,85,85,.2)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div style="width:36px;height:36px;border-radius:10px;background:#fff0f0;display:flex;align-items:center;justify-content:center;font-size:20px">🚪</div>
+      <h3 style="font-size:18px;font-weight:800;color:var(--red)">회원 탈퇴</h3>
+    </div>
+    <p style="font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:16px">
+      탈퇴하면 내 정보와 활동 기록이 삭제됩니다.<br>
+      <strong style="color:var(--red)">이 작업은 되돌릴 수 없습니다.</strong>
+    </p>
+    <div style="background:#fff0f0;border:1px solid rgba(232,85,85,.2);border-radius:12px;padding:14px;margin-bottom:16px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600">탈퇴하는 계정</div>
+      <div style="font-size:15px;font-weight:700">${esc(state.user.name)} (${state.user.studentYear}학번)</div>
+    </div>
+    <div style="margin-bottom:14px">
+      <label class="lbl">탈퇴 확인을 위해 비밀번호를 입력하세요</label>
+      <div class="pw-wrap">
+        <input class="inp" id="sw-pw" type="password" placeholder="현재 비밀번호 8자리" maxlength="8" oninput="this.value=this.value.replace(/\\D/g,'')">
+        <button class="pw-eye" onclick="togglePw('sw-pw',this)">👁️</button>
+      </div>
+    </div>
+    <div id="sw-err" style="display:none;color:var(--red);font-size:13px;padding:8px 12px;background:#fff0f0;border-radius:8px;margin-bottom:12px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="document.getElementById('sw-overlay').remove()" class="btn btn-g btn-sm">취소</button>
+      <button onclick="doSelfWithdraw()" style="padding:9px 18px;border-radius:10px;border:none;background:var(--red);color:#fff;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:13px">🚪 탈퇴하기</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+function doSelfWithdraw(){
+  const pw=document.getElementById('sw-pw').value;
+  const err=document.getElementById('sw-err');
+  err.style.display='none';
+  if(!pw){err.textContent='비밀번호를 입력해주세요.';err.style.display='block';return;}
+  if(pw!==state.user.password){err.textContent='비밀번호가 일치하지 않습니다.';err.style.display='block';return;}
+  const u=state.user;
+  // 탈퇴 이력 저장
+  const wItem={id:uid(),memberId:u.id,memberName:u.name,studentYear:u.studentYear,
+    gender:u.gender,clubs:u.clubs,status:u.status,reason:'자진 탈퇴',
+    withdrawnAt:new Date().toISOString(),withdrawnBy:'본인'};
+  state.withdrawals.push(wItem);
+  state.members=state.members.filter(m=>m.id!==u.id);
+  saveLocal();
+  fbPatch('withdrawals',{[wItem.id]:wItem});
+  fbDelete('members/'+u.id);
+  document.getElementById('sw-overlay').remove();
+  stopPolling();
+  state.user=null;state.isAdmin=false;
+  alert('탈퇴가 완료되었습니다. 이용해 주셔서 감사합니다.');
+  render();
 }
 
 // ============ PASSWORD CHANGE ============
@@ -1523,12 +1792,12 @@ function replyPwRequest(reqId){
 }
 
 function showChangePw(){
-  document.getElementById('profile-pw-area').innerHTML=renderChangePw();
-  document.getElementById('profile-pw-area').scrollIntoView({behavior:'smooth'});
+  document.getElementById('profile-action-area').innerHTML=renderChangePw();
+  document.getElementById('profile-action-area').scrollIntoView({behavior:'smooth'});
 }
 function showPwReq(){
-  document.getElementById('profile-pw-area').innerHTML=renderPwRequest();
-  document.getElementById('profile-pw-area').scrollIntoView({behavior:'smooth'});
+  document.getElementById('profile-action-area').innerHTML=renderPwRequest();
+  document.getElementById('profile-action-area').scrollIntoView({behavior:'smooth'});
 }
 
 // ============ START ── 핵심 수정 부분 ============
