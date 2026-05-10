@@ -132,17 +132,10 @@ const ADMIN_ID='50325', ADMIN_PW='27341004';
 const YEARS=Array.from({length:41},(_,i)=>2010+i);
 const DB='https://ps1nangman-default-rtdb.firebaseio.com';
 
-// ── Firebase REST API helpers (타임아웃 5초 추가) ──────────────────────────
-function fetchWithTimeout(url, options={}, ms=5000){
-  const ctrl=new AbortController();
-  const timer=setTimeout(()=>ctrl.abort(), ms);
-  return fetch(url,{...options,signal:ctrl.signal})
-    .finally(()=>clearTimeout(timer));
-}
-
+// ── Firebase REST API helpers ──────────────────────────────────────────────
 async function fbGet(path){
   try{
-    const r=await fetchWithTimeout(DB+'/'+path+'.json',{},5000);
+    const r=await fetch(DB+'/'+path+'.json');
     const d=await r.json();
     return d===null?undefined:d;
   }catch(e){
@@ -153,11 +146,11 @@ async function fbGet(path){
 
 async function fbSet(path,val){
   try{
-    await fetchWithTimeout(DB+'/'+path+'.json',{
+    await fetch(DB+'/'+path+'.json',{
       method:'PUT',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify(val)
-    },8000);
+    });
   }catch(e){
     console.error('fbSet error',e.message);
   }
