@@ -111,6 +111,10 @@ td{padding:11px 14px;border-bottom:1px solid var(--bdr)}
 .pw-wrap{position:relative}
 .pw-wrap .inp{padding-right:44px}
 .pw-eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;color:var(--muted)}
+
+/* 로딩 화면 */
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.7;transform:scale(.95)}}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -121,31 +125,45 @@ const GITHUB_RAW = 'https://raw.githubusercontent.com/pknu503/PS1_nangman-moim/m
 const CLUBS = {
   hora:{id:'hora',name:'오라',en:'Hora',color:'#9B8EC4',emoji:'🕐',logo:`${GITHUB_RAW}/%EC%98%A4%EB%9D%BC.jpg`,desc:'시간을 함께하는 동아리',boardName:'오라타임'},
   myth:{id:'myth',name:'클럽신화',en:'MYTH',color:'#D4864A',emoji:'🔥',logo:`${GITHUB_RAW}/%EC%8B%A0%ED%99%94.jpg`,desc:'신화를 만들어가는 동아리',boardName:'신화전기'},
-  theme:{id:'theme',name:'띰',en:'Theme',color:'#4A7FC4',emoji:'🔍',logo:`${GITHUB_RAW}/%EB%9D%BC.png`,desc:'주제를 탐구하는 동아리',boardName:'테마찾기'},
+  theme:{id:'theme',name:'띰',en:'Theme',color:'#4A7FC4',emoji:'🔍',logo:`${GITHUB_RAW}/%EB%9D%94.png`,desc:'주제를 탐구하는 동아리',boardName:'테마찾기'},
 };
-// 띰 로고는 띰.png
-CLUBS.theme.logo = `${GITHUB_RAW}/%EB%9D%BC.png`;
 
 const ADMIN_ID='50325', ADMIN_PW='27341004';
 const YEARS=Array.from({length:41},(_,i)=>2010+i);
-
 const DB='https://ps1nangman-default-rtdb.firebaseio.com';
 
-// Firebase REST API helpers
-async function fbGet(path){
-  try{
-    const r=await fetch(DB+'/'+path+'.json');
-    const d=await r.json();
-    return d===null?undefined:d;
-  }catch(e){return undefined;}
-}
-async function fbSet(path,val){
-  try{
-    await fetch(DB+'/'+path+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(val)});
-  }catch(e){console.error('fbSet error',e);}
+// ── Firebase REST API helpers (타임아웃 5초 추가) ──────────────────────────
+function fetchWithTimeout(url, options={}, ms=5000){
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(), ms);
+  return fetch(url,{...options,signal:ctrl.signal})
+    .finally(()=>clearTimeout(timer));
 }
 
-// localStorage fallback (로컬 캐시용)
+async function fbGet(path){
+  try{
+    const r=await fetchWithTimeout(DB+'/'+path+'.json',{},5000);
+    const d=await r.json();
+    return d===null?undefined:d;
+  }catch(e){
+    console.warn('fbGet failed:',path,e.message);
+    return undefined;
+  }
+}
+
+async function fbSet(path,val){
+  try{
+    await fetchWithTimeout(DB+'/'+path+'.json',{
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(val)
+    },8000);
+  }catch(e){
+    console.error('fbSet error',e.message);
+  }
+}
+
+// localStorage
 function ld(k,d){try{const r=localStorage.getItem(k);return r?JSON.parse(r):d}catch{return d}}
 function sv(k,v){localStorage.setItem(k,JSON.stringify(v))}
 
@@ -172,9 +190,9 @@ function saveLocal(){
   sv('nm_attend',state.attendance);sv('nm_promos',state.promos);
   sv('nm_pwreq',state.pwRequests);sv('nm_withdrawals',state.withdrawals||[]);
 }
+
 function save(){
   saveLocal();
-  // Firebase에 공유 데이터 저장
   fbSet('members', state.members||[]);
   fbSet('posts', state.posts||[]);
   fbSet('schedules', state.schedules||[]);
@@ -185,26 +203,33 @@ function save(){
   fbSet('withdrawals', state.withdrawals||[]);
 }
 
-// Firebase에서 전체 데이터 로드 (안전하게)
-function toArr(v){ if(!v) return []; if(Array.isArray(v)) return v.filter(x=>x!=null); return Object.values(v).filter(x=>x!=null); }
+function toArr(v){
+  if(!v) return [];
+  if(Array.isArray(v)) return v.filter(x=>x!=null);
+  return Object.values(v).filter(x=>x!=null);
+}
+
+// ── Firebase 전체 로드 (절대 throw 안 함) ─────────────────────────────────
 async function loadFromFirebase(){
   try{
     const [members,posts,schedules,events,attendance,promos,pwRequests,withdrawals]=await Promise.all([
       fbGet('members'), fbGet('posts'), fbGet('schedules'), fbGet('events'),
       fbGet('attendance'), fbGet('promos'), fbGet('pwRequests'), fbGet('withdrawals'),
     ]);
-    state.members    = toArr(members);
-    state.posts      = toArr(posts);
-    state.schedules  = toArr(schedules);
-    state.events     = toArr(events);
-    state.attendance = toArr(attendance);
-    state.promos     = toArr(promos);
-    state.pwRequests = toArr(pwRequests);
-    state.withdrawals= toArr(withdrawals);
-    saveLocal(); // 로컬 캐시 업데이트
+    // undefined = Firebase 응답 없음 → 로컬 캐시 유지
+    if(members    !== undefined) state.members    = toArr(members);
+    if(posts      !== undefined) state.posts      = toArr(posts);
+    if(schedules  !== undefined) state.schedules  = toArr(schedules);
+    if(events     !== undefined) state.events     = toArr(events);
+    if(attendance !== undefined) state.attendance = toArr(attendance);
+    if(promos     !== undefined) state.promos     = toArr(promos);
+    if(pwRequests !== undefined) state.pwRequests = toArr(pwRequests);
+    if(withdrawals!== undefined) state.withdrawals= toArr(withdrawals);
+    saveLocal();
     console.log('Firebase loaded: members='+state.members.length+' posts='+state.posts.length);
   }catch(e){
-    console.error('Firebase load error:',e);
+    console.warn('Firebase load error (로컬 데이터 사용):', e.message);
+    // 에러가 나도 로컬 스토리지 데이터는 이미 state에 있으므로 그대로 진행
   }
 }
 
@@ -213,7 +238,7 @@ function logoImg(club,size=28,radius=7){
   const half=Math.round(size*.5);
   const fallback=club.emoji;
   return '<div style="width:'+size+'px;height:'+size+'px;border-radius:'+radius+'px;overflow:hidden;border:1.5px solid '+club.color+'40;flex-shrink:0;background:'+club.color+'15;display:flex;align-items:center;justify-content:center;">'
-    +'<img src="'+club.logo+'" alt="'+club.name+'" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none';this.parentNode.innerHTML='<span style=&quot;font-size:'+half+'px&quot;>'+fallback+'</span>'">'
+    +'<img src="'+club.logo+'" alt="'+club.name+'" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display=\'none\';this.parentNode.innerHTML=\'<span style=&quot;font-size:'+half+'px&quot;>'+fallback+'</span>\'">'
     +'</div>';
 }
 function fmtDate(d){return new Date(d).toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'})}
@@ -226,35 +251,23 @@ function psMark(status){
   const label=isGrad?'PS0':'PS1';
   return '<span style="font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;background:'+bg+';color:#fff;letter-spacing:0.5px;vertical-align:middle;flex-shrink:0">'+label+'</span>';
 }
-function memberLabel(m){
-  return `${esc(m.name)}(${String(m.studentYear).slice(2)}) ${psMark(m.status)}`;
-}
-
-
-
-function emptyState(ico, msg){
+function emptyState(ico,msg){
   return '<div class="empty"><div class="ico">'+ico+'</div><p>'+msg+'</p></div>';
 }
-function makeTabHtml(tabs, activeId, subPageKey){
+function makeTabHtml(tabs,activeId,subPageKey){
   return '<div class="tabs">'+tabs.map(function(t){
     var id=t[0],label=t[1];
     return '<button class="tab '+(activeId===id?'active':'')+'" onclick="setSubPage(\''+subPageKey+'\',\''+id+'\')">'+label+'</button>';
   }).join('')+'</div>';
 }
-function makeTabHtmlPage(tabs, activeId, pageKey){
-  return '<div class="tabs">'+tabs.map(function(t){
-    var id=t[0],label=t[1];
-    return '<button class="tab '+(activeId===id?'active':'')+'" onclick="goPage(\''+id+'\')">'+label+'</button>';
-  }).join('')+'</div>';
-}
+
 // ============ RENDER ENGINE ============
 function render(){
-  // save()를 render에서 제거 - 데이터 변경시에만 저장
   if(!state.user){renderAuth();return;}
   renderApp();
 }
 
-// Firebase 실시간 polling (10초마다 새 데이터 반영)
+// Firebase 실시간 polling (5초마다)
 let _pollTimer=null;
 function startPolling(){
   if(_pollTimer)clearInterval(_pollTimer);
@@ -262,7 +275,7 @@ function startPolling(){
     if(!state.user)return;
     await loadFromFirebase();
     render();
-  },5000); // 5초마다
+  },5000);
 }
 function stopPolling(){if(_pollTimer){clearInterval(_pollTimer);_pollTimer=null;}}
 
@@ -329,7 +342,7 @@ function renderRegister(){
         <label style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;cursor:pointer;border:2px solid var(--bdr);background:var(--sur2);flex:1;transition:all .15s" id="lbl-active" onclick="selectStatus('active')">
           <input type="radio" name="rg-status" value="active" checked style="display:none">
           <span style="font-size:18px">🎓</span>
-          <div><div style="font-size:13px;font-weight:700" id="st-active-txt">현역</div>
+          <div><div style="font-size:13px;font-weight:700">현역</div>
           <div style="font-size:10px;color:var(--muted)">재학생 · 휴학생</div></div>
           <span style="margin-left:auto;font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;background:#2E7EC7;color:#fff">PS1</span>
         </label>
@@ -404,7 +417,6 @@ function toggleClubSel(id){
     if(chk){ chk.style.display=sel?'inline':'none'; chk.style.color=c.color; }
   });
 
-  // 선택된 동아리 안내 텍스트
   const info=document.getElementById('club-sel-info');
   if(info){
     if(_selClubs.length===0){
@@ -428,8 +440,9 @@ function doLogin(){
   if(name===ADMIN_ID&&pw===ADMIN_PW){
     state.user={id:'admin',name:'관리자',studentYear:'관리자',clubs:Object.keys(CLUBS),gender:'-'};
     state.isAdmin=true;state.page='home';
-    document.body.innerHTML='<div style="min-height:100vh;display:flex;align-items:center;justify-content:center"><div style="text-align:center;color:#9B7878;font-size:13px"><div style="border:2px solid #F28B8B;border-top-color:transparent;border-radius:50%;width:24px;height:24px;animation:spin 0.8s linear infinite;margin:0 auto 10px"></div>로그인 중...</div></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
-    loadFromFirebase().then(()=>{render();startPolling();});return;
+    showLoadingScreen('로그인 중...');
+    loadFromFirebase().then(()=>{render();startPolling();});
+    return;
   }
   const m=state.members.find(x=>x.name===name&&x.password===pw);
   if(!m){showErr('li-err','이름 또는 비밀번호가 일치하지 않습니다.');return;}
@@ -453,10 +466,9 @@ function doRegister(){
   const m={id:uid(),name,studentYear:year,gender,clubs:[..._selClubs],password:pw,status:_selStatus,joinedAt:new Date().toISOString()};
   state.members.push(m);state.user=m;state.isAdmin=false;state.page='home';
   _selClubs=[];_selStatus='active';
-  save(); // Firebase에 즉시 저장
-  render(); // 일단 현재 상태로 화면 표시
+  save();
+  render();
   startPolling();
-  // 1.5초 후 Firebase에서 확인 로드
   setTimeout(()=>loadFromFirebase().then(()=>render()), 1500);
 }
 
@@ -501,7 +513,6 @@ function renderApp(){
 function goPage(id){
   state.page=id;
   state.subPage={};
-  // 통합현황·관리자 페이지는 최신 데이터 즉시 로드
   if(id==='integrated'||id==='admin'){
     loadFromFirebase().then(()=>render());
   } else {
@@ -509,6 +520,25 @@ function goPage(id){
   }
 }
 function doLogout(){stopPolling();state.user=null;state.isAdmin=false;state.authMode='login';render();}
+
+function showLoadingScreen(msg='데이터 불러오는 중...'){
+  document.body.innerHTML=`
+  <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(160deg,#fff 60%,#FFF0F0 100%)">
+    <div style="text-align:center">
+      <div style="display:flex;justify-content:center;gap:12px;margin-bottom:20px">
+        <div style="width:48px;height:48px;border-radius:13px;background:linear-gradient(135deg,#9B8EC4,#F28B8B);display:flex;align-items:center;justify-content:center;font-size:22px;animation:pulse 1.2s ease-in-out infinite">🕐</div>
+        <div style="width:48px;height:48px;border-radius:13px;background:linear-gradient(135deg,#D4864A,#F5A623);display:flex;align-items:center;justify-content:center;font-size:22px;animation:pulse 1.2s ease-in-out infinite .2s">🔥</div>
+        <div style="width:48px;height:48px;border-radius:13px;background:linear-gradient(135deg,#4A7FC4,#5BA3F5);display:flex;align-items:center;justify-content:center;font-size:22px;animation:pulse 1.2s ease-in-out infinite .4s">🔍</div>
+      </div>
+      <div style="font-family:'Nanum Myeongjo',serif;font-size:26px;font-weight:800;color:#F28B8B;margin-bottom:8px">낭만모임</div>
+      <div style="font-size:13px;color:#9B7878;margin-bottom:24px">부경대 사회복지 전공동아리</div>
+      <div style="display:flex;align-items:center;gap:8px;justify-content:center;color:#C4A0A0;font-size:13px">
+        <div style="width:16px;height:16px;border:2px solid #F28B8B;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+        ${msg}
+      </div>
+    </div>
+  </div>`;
+}
 
 // ============ HOME ============
 function renderHome(){
@@ -605,7 +635,6 @@ function showPromoForm(){
       </div>
     </div>
   </div>`;
-  // 전체 선택시 안내문 표시
   document.getElementById('pf-club').addEventListener('change',function(){
     const notice=document.getElementById('pf-all-notice');
     if(notice) notice.style.display=this.value==='all'?'block':'none';
@@ -618,7 +647,6 @@ function submitPromo(){
   const content=document.getElementById('pf-content').value.trim();
   if(!clubId||!title||!content)return alert('모든 항목을 입력해주세요.');
   if(clubId==='all'){
-    // 전체 동아리 각각에 게시
     Object.keys(CLUBS).forEach(cid=>{
       state.promos.push({id:uid(),clubId:cid,authorName:state.user.name,title,content,
         isGlobal:true,createdAt:new Date().toISOString()});
@@ -880,7 +908,6 @@ function renderClubMembers(clubId,club){
 
 // ============ INTEGRATED ============
 function renderIntegrated(){
-  console.log('[통합현황] members:'+state.members.length+' posts:'+state.posts.length);
   const stats=Object.values(CLUBS).map(club=>{
     const cm=state.members.filter(m=>m.clubs?.includes(club.id));
     const male=cm.filter(m=>m.gender==='male').length;
@@ -965,9 +992,9 @@ function renderIntegrated(){
       ${stats.map(c=>`<div style="margin-bottom:14px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">${logoImg(c,20,5)}<span style="font-size:13px;font-weight:700;color:${c.color}">${c.name}</span></div>
         <div style="display:flex;gap:10px;font-size:12px;color:var(--muted)">
-          <span style="background:var(--pink)15;color:var(--pink);padding:2px 10px;border-radius:10px;font-weight:600">게시글 ${c.posts}</span>
-          <span style="background:var(--hora)15;color:var(--hora);padding:2px 10px;border-radius:10px;font-weight:600">일정 ${c.scheds}</span>
-          <span style="background:var(--theme)15;color:var(--theme);padding:2px 10px;border-radius:10px;font-weight:600">이벤트 ${c.evts}</span>
+          <span style="background:var(--pink-s);color:var(--pink);padding:2px 10px;border-radius:10px;font-weight:600">게시글 ${c.posts}</span>
+          <span style="background:#9B8EC415;color:var(--hora);padding:2px 10px;border-radius:10px;font-weight:600">일정 ${c.scheds}</span>
+          <span style="background:#4A7FC415;color:var(--theme);padding:2px 10px;border-radius:10px;font-weight:600">이벤트 ${c.evts}</span>
         </div>
       </div>`).join('')}
     </div>`;
@@ -1020,7 +1047,7 @@ function renderIntegrated(){
         <h1 style="font-size:19px;font-weight:800;font-family:'Nanum Myeongjo',serif">통합 현황</h1>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <p style="color:var(--muted);font-size:12px;padding-left:12px">3개 동아리 실시간 통계 · 누구나 볼 수 있습니다 · 회원 ${state.members.length}명 로드됨</p>
+        <p style="color:var(--muted);font-size:12px;padding-left:12px">3개 동아리 실시간 통계 · 회원 ${state.members.length}명 로드됨</p>
         <button onclick="loadFromFirebase().then(()=>render())" class="btn btn-p btn-sm" style="font-size:11px">🔄 새로고침</button>
       </div>
     </div>
@@ -1038,7 +1065,6 @@ function renderAdmin(){
 
   let body='';
   if(tab==='members'){
-    const YEARS2=Array.from({length:41},(_,i)=>2010+i);
     body=`<h2 class="sec-title">회원 관리 (${state.members.length}명)</h2>
     ${state.members.length===0?emptyState('👤','등록된 회원이 없습니다.'):
     state.members.map(m=>`<div class="card" style="margin-bottom:10px;padding:16px 20px">
@@ -1117,7 +1143,7 @@ function renderAdmin(){
       <div style="display:flex;align-items:center;gap:8px">
         <div style="width:4px;height:20px;background:var(--pink);border-radius:2px"></div>
         <div><h1 style="font-size:19px;font-weight:800;font-family:'Nanum Myeongjo',serif">관리자 패널</h1>
-        <p style="color:var(--muted);font-size:12px">모든 데이터를 관리합니다 · 10초마다 자동 갱신</p></div>
+        <p style="color:var(--muted);font-size:12px">모든 데이터를 관리합니다</p></div>
       </div>
       <button onclick="loadFromFirebase().then(()=>render())" class="btn btn-g btn-sm" style="font-size:12px">🔄 지금 새로고침</button>
     </div>
@@ -1125,9 +1151,8 @@ function renderAdmin(){
   <div class="content">${tabHtml}${body}</div>`;
 }
 
-// ====== 강제 탈퇴 ======
+// 강제 탈퇴
 function showForceWithdraw(memberId, memberName){
-  // 모달 생성
   const overlay=document.createElement('div');
   overlay.id='fw-overlay';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(45,31,31,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;backdrop-filter:blur(4px)';
@@ -1138,7 +1163,7 @@ function showForceWithdraw(memberId, memberName){
         <h3 style="font-size:17px;font-weight:800;color:var(--red)">강제 탈퇴</h3>
       </div>
       <p style="font-size:13px;color:var(--muted);margin-bottom:20px">
-        <strong style="color:var(--txt)">${memberName}</strong> 회원을 강제 탈퇴 처리합니다.<br>탈퇴 후 해당 회원은 로그인이 불가합니다.
+        <strong style="color:var(--txt)">${memberName}</strong> 회원을 강제 탈퇴 처리합니다.
       </p>
       <div style="margin-bottom:14px">
         <label style="display:block;font-size:13px;color:var(--muted);font-weight:600;margin-bottom:6px">탈퇴 사유 (필수)</label>
@@ -1159,7 +1184,7 @@ function showForceWithdraw(memberId, memberName){
         <button onclick="document.getElementById('fw-overlay').remove()"
           style="padding:9px 18px;border-radius:10px;border:1.5px solid var(--bdr);background:transparent;color:var(--muted);cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-weight:600;font-size:13px">취소</button>
         <button onclick="doForceWithdraw('${memberId}','${memberName}')"
-          style="padding:9px 18px;border-radius:10px;border:none;background:var(--red);color:#fff;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:13px;box-shadow:0 2px 8px rgba(232,85,85,.3)">🚫 강제 탈퇴</button>
+          style="padding:9px 18px;border-radius:10px;border:none;background:var(--red);color:#fff;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:13px">🚫 강제 탈퇴</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -1171,22 +1196,14 @@ function doForceWithdraw(memberId, memberName){
   const err=document.getElementById('fw-err');
   let reason=sel.value==='직접입력'?custom.value.trim():sel.value;
   if(!reason){err.textContent='탈퇴 사유를 선택하거나 입력해주세요.';err.style.display='block';return;}
-
   const member=state.members.find(m=>m.id===memberId);
   if(member){
-    // 탈퇴 이력 저장
     state.withdrawals.push({
-      id:uid(),
-      memberId, memberName,
-      studentYear:member.studentYear,
-      gender:member.gender,
-      clubs:member.clubs,
-      status:member.status,
-      reason,
-      withdrawnAt:new Date().toISOString(),
-      withdrawnBy:'관리자',
+      id:uid(), memberId, memberName,
+      studentYear:member.studentYear, gender:member.gender,
+      clubs:member.clubs, status:member.status, reason,
+      withdrawnAt:new Date().toISOString(), withdrawnBy:'관리자',
     });
-    // 회원 삭제
     state.members=state.members.filter(m=>m.id!==memberId);
     save();
   }
@@ -1206,31 +1223,16 @@ function renderWithdrawals(){
   <div class="card" style="margin-bottom:10px;padding:16px 20px;border-left:4px solid var(--red)">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-          <div style="width:34px;height:34px;border-radius:10px;background:#fff0f0;border:1.5px solid rgba(232,85,85,.3);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--red);font-size:14px">${esc(w.memberName[0])}</div>
-          <div>
-            <div style="font-weight:700;font-size:14px">${esc(w.memberName)}(${String(w.studentYear).slice(2)})
-              <span style="font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;background:${w.status==='graduated'?'#F28B8B':'#2E7EC7'};color:#fff;margin-left:4px">${w.status==='graduated'?'PS0':'PS1'}</span>
-            </div>
-            <div style="font-size:12px;color:var(--muted)">${w.studentYear}학번 · ${w.gender==='male'?'남':w.gender==='female'?'여':'기타'}</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">
-          ${(w.clubs||[]).map(c=>`<span style="padding:1px 8px;border-radius:10px;background:${CLUBS[c]?.color}15;color:${CLUBS[c]?.color};font-size:11px;font-weight:700">${CLUBS[c]?.name}</span>`).join('')}
-        </div>
-        <div style="font-size:12px;color:var(--red);font-weight:600;background:#fff0f0;padding:4px 10px;border-radius:8px;display:inline-block">
-          사유: ${esc(w.reason)}
-        </div>
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px">${esc(w.memberName)}(${String(w.studentYear).slice(2)})</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${w.studentYear}학번</div>
+        <div style="font-size:12px;color:var(--red);font-weight:600;background:#fff0f0;padding:4px 10px;border-radius:8px;display:inline-block">사유: ${esc(w.reason)}</div>
       </div>
       <div style="text-align:right;flex-shrink:0">
         <div style="font-size:11px;color:var(--muted)">${fmtShort(w.withdrawnAt)} 처리</div>
-        <div style="font-size:11px;color:var(--light);margin-top:2px">${w.withdrawnBy}</div>
       </div>
     </div>
   </div>`).join('')}`;
 }
-
-function deleteMember(id){state.members=state.members.filter(m=>m.id!==id);save();render();}
 
 // ============ PROFILE ============
 function renderProfile(){
@@ -1300,7 +1302,6 @@ function renderProfile(){
   </div>`;
 }
 
-
 // ============ PASSWORD CHANGE ============
 function renderChangePw(){
   return `
@@ -1310,15 +1311,16 @@ function renderChangePw(){
       <h3 style="font-size:16px;font-weight:700">비밀번호 변경</h3>
     </div>
     <div style="display:flex;flex-direction:column;gap:12px">
-      <div class="notice">
-        현재 비밀번호 확인 후 새 비밀번호(8자리 숫자)를 설정합니다.
-      </div>
+      <div class="notice">현재 비밀번호 확인 후 새 비밀번호(8자리 숫자)를 설정합니다.</div>
       <div><label class="lbl">현재 비밀번호</label>
-        <div class="pw-wrap"><input class="inp" id="cpw-old" type="password" placeholder="현재 비밀번호 8자리" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">        <button class="pw-eye" onclick="togglePw('cpw-old',this)">👁️</button></div></div>
+        <div class="pw-wrap"><input class="inp" id="cpw-old" type="password" placeholder="현재 비밀번호 8자리" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">
+        <button class="pw-eye" onclick="togglePw('cpw-old',this)">👁️</button></div></div>
       <div><label class="lbl">새 비밀번호</label>
-        <div class="pw-wrap"><input class="inp" id="cpw-new" type="password" placeholder="새 비밀번호 8자리" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">        <button class="pw-eye" onclick="togglePw('cpw-new',this)">👁️</button></div></div>
+        <div class="pw-wrap"><input class="inp" id="cpw-new" type="password" placeholder="새 비밀번호 8자리" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">
+        <button class="pw-eye" onclick="togglePw('cpw-new',this)">👁️</button></div></div>
       <div><label class="lbl">새 비밀번호 확인</label>
-        <div class="pw-wrap"><input class="inp" id="cpw-new2" type="password" placeholder="새 비밀번호 재입력" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">        <button class="pw-eye" onclick="togglePw('cpw-new2',this)">👁️</button></div></div>
+        <div class="pw-wrap"><input class="inp" id="cpw-new2" type="password" placeholder="새 비밀번호 재입력" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'')">
+        <button class="pw-eye" onclick="togglePw('cpw-new2',this)">👁️</button></div></div>
       <div id="cpw-err" style="display:none;color:var(--red);font-size:13px;padding:8px 12px;background:#fff0f0;border-radius:8px"></div>
       <div id="cpw-ok" style="display:none;color:var(--green);font-size:13px;padding:8px 12px;background:#f0fff6;border-radius:8px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -1341,7 +1343,6 @@ function doChangePw(){
   if(!/^\d{8}$/.test(nw)){err.textContent='새 비밀번호는 8자리 숫자여야 합니다.';err.style.display='block';return;}
   if(nw===old){err.textContent='새 비밀번호가 기존 비밀번호와 같습니다.';err.style.display='block';return;}
   if(nw!==nw2){err.textContent='새 비밀번호가 일치하지 않습니다.';err.style.display='block';return;}
-  // 저장
   const idx=state.members.findIndex(m=>m.id===state.user.id);
   if(idx>=0){state.members[idx].password=nw;state.user=state.members[idx];}
   save();
@@ -1349,7 +1350,6 @@ function doChangePw(){
   document.getElementById('cpw-old').value='';
   document.getElementById('cpw-new').value='';
   document.getElementById('cpw-new2').value='';
-  save();
 }
 
 // ============ PASSWORD REQUEST ============
@@ -1371,14 +1371,10 @@ function renderPwRequest(){
     ${lastReq&&lastReq.status==='done'?`
     <div style="background:#f0fff6;border:1.5px solid #4A9B6A40;border-radius:var(--r);padding:14px 16px;margin-bottom:12px">
       <div style="font-weight:700;color:var(--green);margin-bottom:6px">✅ 관리자 답변 완료</div>
-      <div style="font-size:13px;color:var(--txt);line-height:1.7">${esc(lastReq.adminReply||'')} </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:6px">${fmtShort(lastReq.repliedAt||lastReq.createdAt)}</div>
+      <div style="font-size:13px;color:var(--txt);line-height:1.7">${esc(lastReq.adminReply||'')}</div>
     </div>`:''}
     <div style="display:flex;flex-direction:column;gap:10px">
-      <p style="font-size:13px;color:var(--muted);line-height:1.7">
-        비밀번호를 잊으셨나요? 관리자에게 요청을 보내면<br>
-        비밀번호를 확인하여 알려드립니다.
-      </p>
+      <p style="font-size:13px;color:var(--muted);line-height:1.7">비밀번호를 잊으셨나요? 관리자에게 요청을 보내세요.</p>
       <textarea class="inp" id="pwreq-msg" placeholder="관리자에게 전달할 메시지 (선택)" style="min-height:70px"></textarea>
       <button class="btn btn-p btn-sm" style="align-self:flex-end" onclick="submitPwRequest()">요청 보내기</button>
     </div>
@@ -1388,18 +1384,17 @@ function renderPwRequest(){
 function submitPwRequest(){
   const msg=document.getElementById('pwreq-msg').value.trim();
   const already=state.pwRequests.find(r=>r.memberId===state.user.id&&r.status==='pending');
-  if(already){alert('이미 처리 대기 중인 요청이 있습니다. 관리자 답변을 기다려주세요.');return;}
+  if(already){alert('이미 처리 대기 중인 요청이 있습니다.');return;}
   state.pwRequests.push({
     id:uid(), memberId:state.user.id, memberName:state.user.name,
     studentYear:state.user.studentYear, msg, status:'pending',
     createdAt:new Date().toISOString(), adminReply:'', repliedAt:null,
   });
   save();
-  alert('✅ 요청이 전송되었습니다! 관리자 확인 후 답변해 드립니다.');
+  alert('✅ 요청이 전송되었습니다!');
   render();
 }
 
-// 관리자: 비번 요청 탭
 function renderAdminPwRequests(){
   const reqs=[...state.pwRequests].reverse();
   const pending=reqs.filter(r=>r.status==='pending');
@@ -1410,7 +1405,6 @@ function renderAdminPwRequests(){
   </div>
   ${reqs.length===0?`<div class="empty"><div class="ico">📭</div><p>비밀번호 요청이 없습니다.</p></div>`:
   reqs.map(r=>{
-    // 해당 회원 실제 비번 찾기
     const member=state.members.find(m=>m.id===r.memberId);
     const actualPw=member?member.password:'(탈퇴 회원)';
     return `
@@ -1435,13 +1429,12 @@ function renderAdminPwRequests(){
             </div>
           </div>`:`
           <div style="margin-top:8px;font-size:12px;color:var(--muted)">
-            답변: ${esc(r.adminReply||'')} · ${r.repliedAt?fmtShort(r.repliedAt):''}
+            답변: ${esc(r.adminReply||'')}
           </div>`}
         </div>
       </div>
     </div>`;
-  }).join('')}
-  `;
+  }).join('')}`;
 }
 
 function replyPwRequest(reqId){
@@ -1465,37 +1458,15 @@ function showPwReq(){
   document.getElementById('profile-pw-area').scrollIntoView({behavior:'smooth'});
 }
 
-// ============ START ============
-// 로딩 화면 표시 후 Firebase 데이터 로드
-document.body.innerHTML=`
-<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(160deg,#fff 60%,#FFF0F0 100%)">
-  <div style="text-align:center">
-    <div style="display:flex;justify-content:center;gap:12px;margin-bottom:20px">
-      <div style="width:48px;height:48px;border-radius:13px;background:linear-gradient(135deg,#9B8EC4,#F28B8B);display:flex;align-items:center;justify-content:center;font-size:22px;animation:pulse 1.2s ease-in-out infinite">🕐</div>
-      <div style="width:48px;height:48px;border-radius:13px;background:linear-gradient(135deg,#D4864A,#F5A623);display:flex;align-items:center;justify-content:center;font-size:22px;animation:pulse 1.2s ease-in-out infinite .2s">🔥</div>
-      <div style="width:48px;height:48px;border-radius:13px;background:linear-gradient(135deg,#4A7FC4,#5BA3F5);display:flex;align-items:center;justify-content:center;font-size:22px;animation:pulse 1.2s ease-in-out infinite .4s">🔍</div>
-    </div>
-    <div style="font-family:'Nanum Myeongjo',serif;font-size:26px;font-weight:800;color:#F28B8B;margin-bottom:8px">낭만모임</div>
-    <div style="font-size:13px;color:#9B7878;margin-bottom:24px">부경대 사회복지 전공동아리</div>
-    <div style="display:flex;align-items:center;gap:8px;justify-content:center;color:#C4A0A0;font-size:13px">
-      <div style="width:16px;height:16px;border:2px solid #F28B8B;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite"></div>
-      데이터 불러오는 중...
-    </div>
-  </div>
-  <style>
-    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.7;transform:scale(.95)}}
-    @keyframes spin{to{transform:rotate(360deg)}}
-  </style>
-</div>`;
+// ============ START ── 핵심 수정 부분 ============
+// 로딩 화면 표시
+showLoadingScreen();
 
+// Firebase 로드 시도 → 성공/실패 무관하게 반드시 render() 호출
 (async()=>{
-  try{
-    await loadFromFirebase();
-  }catch(e){
-    console.error('Init load failed:',e);
-  }
-  render();
-  startPolling();
+  await loadFromFirebase(); // 내부에서 에러를 잡으므로 절대 throw 안 함
+  render();                 // 항상 실행됨
+  if(state.user) startPolling();
 })();
 </script>
 </body>
