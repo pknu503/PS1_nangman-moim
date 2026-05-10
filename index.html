@@ -312,14 +312,13 @@ function render(){
 
 // Firebase 실시간 polling (5초마다)
 let _pollTimer=null;
+let _modalOpen=false; // 모달 열림 여부 플래그
+
 function startPolling(){
   if(_pollTimer)clearInterval(_pollTimer);
   _pollTimer=setInterval(async()=>{
     if(!state.user)return;
-    // 모달이 열려 있으면 render() 건너뜀 (모달 강제 닫힘 방지)
-    if(document.getElementById('edit-overlay')||
-       document.getElementById('fw-overlay')||
-       document.getElementById('sw-overlay'))return;
+    if(_modalOpen)return; // 모달 열려있으면 완전히 건너뜀
     await loadFromFirebase();
     render();
   },5000);
@@ -1225,6 +1224,7 @@ function renderAdmin(){
 function showForceWithdraw(memberId, memberName){
   const overlay=document.createElement('div');
   overlay.id='fw-overlay';
+  _modalOpen=true;
   overlay.style.cssText='position:fixed;inset:0;background:rgba(45,31,31,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;backdrop-filter:blur(4px)';
   overlay.innerHTML=`
     <div style="background:#fff;border:1.5px solid var(--bdr);border-radius:20px;padding:32px;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(232,85,85,.2)">
@@ -1251,7 +1251,7 @@ function showForceWithdraw(memberId, memberName){
       </div>
       <div id="fw-err" style="display:none;color:var(--red);font-size:12px;padding:8px 12px;background:#fff0f0;border-radius:8px;margin-bottom:12px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button onclick="document.getElementById('fw-overlay').remove()"
+        <button onclick="_modalOpen=false;document.getElementById('fw-overlay').remove()"
           style="padding:9px 18px;border-radius:10px;border:1.5px solid var(--bdr);background:transparent;color:var(--muted);cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-weight:600;font-size:13px">취소</button>
         <button onclick="doForceWithdraw('${memberId}','${memberName}')"
           style="padding:9px 18px;border-radius:10px;border:none;background:var(--red);color:#fff;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:13px">🚫 강제 탈퇴</button>
@@ -1278,6 +1278,7 @@ function doForceWithdraw(memberId, memberName){
     fbPatch('withdrawals',{[wItem.id]:wItem});
     fbDelete('members/'+memberId);
   }
+  _modalOpen=false;
   document.getElementById('fw-overlay').remove();
   render();
 }
@@ -1438,6 +1439,7 @@ function showEditProfile(){
   const u=state.user;
   const overlay=document.createElement('div');
   overlay.id='edit-overlay';
+  _modalOpen=true; // 폴링 중단
   overlay.style.cssText='position:fixed;inset:0;background:rgba(45,31,31,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;backdrop-filter:blur(4px);overflow-y:auto';
 
   const clubBtns=Object.values(CLUBS).map(c=>{
@@ -1500,7 +1502,7 @@ function showEditProfile(){
       <div id="edit-err" style="display:none;color:var(--red);font-size:13px;padding:8px 12px;background:#fff0f0;border-radius:8px"></div>
       <div id="edit-ok" style="display:none;color:var(--green);font-size:13px;padding:8px 12px;background:#f0fff6;border-radius:8px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
-        <button onclick="document.getElementById('edit-overlay').remove()" class="btn btn-g btn-sm">취소</button>
+        <button onclick="_modalOpen=false;document.getElementById('edit-overlay').remove()" class="btn btn-g btn-sm">취소</button>
         <button onclick="doEditProfile()" class="btn btn-p btn-sm">💾 저장하기</button>
       </div>
     </div>
@@ -1581,6 +1583,7 @@ function doEditProfile(){
   saveLocal();
   fbPatch('members',{[state.user.id]:state.members[idx]});
   // 모달 닫고 화면 갱신
+  _modalOpen=false;
   const overlay=document.getElementById('edit-overlay');
   if(overlay)overlay.remove();
   alert('✅ 정보가 저장되었습니다!');
@@ -1591,6 +1594,7 @@ function doEditProfile(){
 function showSelfWithdraw(){
   const overlay=document.createElement('div');
   overlay.id='sw-overlay';
+  _modalOpen=true;
   overlay.style.cssText='position:fixed;inset:0;background:rgba(45,31,31,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;backdrop-filter:blur(4px)';
   overlay.innerHTML=`
   <div style="background:#fff;border:1.5px solid var(--bdr);border-radius:20px;padding:32px;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(232,85,85,.2)">
@@ -1615,7 +1619,7 @@ function showSelfWithdraw(){
     </div>
     <div id="sw-err" style="display:none;color:var(--red);font-size:13px;padding:8px 12px;background:#fff0f0;border-radius:8px;margin-bottom:12px"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button onclick="document.getElementById('sw-overlay').remove()" class="btn btn-g btn-sm">취소</button>
+      <button onclick="_modalOpen=false;document.getElementById('sw-overlay').remove()" class="btn btn-g btn-sm">취소</button>
       <button onclick="doSelfWithdraw()" style="padding:9px 18px;border-radius:10px;border:none;background:var(--red);color:#fff;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:13px">🚪 탈퇴하기</button>
     </div>
   </div>`;
@@ -1638,6 +1642,7 @@ function doSelfWithdraw(){
   saveLocal();
   fbPatch('withdrawals',{[wItem.id]:wItem});
   fbDelete('members/'+u.id);
+  _modalOpen=false;
   document.getElementById('sw-overlay').remove();
   stopPolling();
   state.user=null;state.isAdmin=false;
