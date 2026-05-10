@@ -129,6 +129,23 @@ CLUBS.theme.logo = `${GITHUB_RAW}/%EB%9D%BC.png`;
 const ADMIN_ID='50325', ADMIN_PW='27341004';
 const YEARS=Array.from({length:41},(_,i)=>2010+i);
 
+const DB='https://ps1nangman-default-rtdb.firebaseio.com';
+
+// Firebase REST API helpers
+async function fbGet(path){
+  try{
+    const r=await fetch(DB+'/'+path+'.json');
+    const d=await r.json();
+    return d===null?undefined:d;
+  }catch(e){return undefined;}
+}
+async function fbSet(path,val){
+  try{
+    await fetch(DB+'/'+path+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(val)});
+  }catch(e){console.error('fbSet error',e);}
+}
+
+// localStorage fallback (로컬 캐시용)
 function ld(k,d){try{const r=localStorage.getItem(k);return r?JSON.parse(r):d}catch{return d}}
 function sv(k,v){localStorage.setItem(k,JSON.stringify(v))}
 
@@ -148,12 +165,46 @@ let state={
 };
 
 function save(){
+  // 로컬 캐시 저장
   sv('nm_user',state.user);sv('nm_admin',state.isAdmin);
   sv('nm_members',state.members);sv('nm_posts',state.posts);
   sv('nm_schedules',state.schedules);sv('nm_events',state.events);
   sv('nm_attend',state.attendance);sv('nm_promos',state.promos);
-  sv('nm_pwreq',state.pwRequests);
-  sv('nm_withdrawals',state.withdrawals);
+  sv('nm_pwreq',state.pwRequests);sv('nm_withdrawals',state.withdrawals);
+  // Firebase 공유 저장
+  fbSet('members',state.members);
+  fbSet('posts',state.posts);
+  fbSet('schedules',state.schedules);
+  fbSet('events',state.events);
+  fbSet('attendance',state.attendance);
+  fbSet('promos',state.promos);
+  fbSet('pwRequests',state.pwRequests);
+  fbSet('withdrawals',state.withdrawals);
+}
+
+// Firebase에서 전체 데이터 로드
+async function loadFromFirebase(){
+  try{
+    const [members,posts,schedules,events,attendance,promos,pwRequests,withdrawals]=await Promise.all([
+      fbGet('members'), fbGet('posts'), fbGet('schedules'), fbGet('events'),
+      fbGet('attendance'), fbGet('promos'), fbGet('pwRequests'), fbGet('withdrawals'),
+    ]);
+    if(members) state.members=Array.isArray(members)?members:Object.values(members);
+    if(posts) state.posts=Array.isArray(posts)?posts:Object.values(posts);
+    if(schedules) state.schedules=Array.isArray(schedules)?schedules:Object.values(schedules);
+    if(events) state.events=Array.isArray(events)?events:Object.values(events);
+    if(attendance) state.attendance=Array.isArray(attendance)?attendance:Object.values(attendance);
+    if(promos) state.promos=Array.isArray(promos)?promos:Object.values(promos);
+    if(pwRequests) state.pwRequests=Array.isArray(pwRequests)?pwRequests:Object.values(pwRequests);
+    if(withdrawals) state.withdrawals=Array.isArray(withdrawals)?withdrawals:Object.values(withdrawals);
+    // 로컬 캐시도 업데이트
+    sv('nm_members',state.members);sv('nm_posts',state.posts);
+    sv('nm_schedules',state.schedules);sv('nm_events',state.events);
+    sv('nm_attend',state.attendance);sv('nm_promos',state.promos);
+    sv('nm_pwreq',state.pwRequests);sv('nm_withdrawals',state.withdrawals);
+  }catch(e){
+    console.error('Firebase load error:',e);
+  }
 }
 
 // ============ HELPERS ============
@@ -180,6 +231,18 @@ function render(){
   if(!state.user){renderAuth();return;}
   renderApp();
 }
+
+// Firebase 실시간 polling (10초마다 새 데이터 반영)
+let _pollTimer=null;
+function startPolling(){
+  if(_pollTimer)clearInterval(_pollTimer);
+  _pollTimer=setInterval(async()=>{
+    if(!state.user)return;
+    await loadFromFirebase();
+    render();
+  },10000); // 10초마다
+}
+function stopPolling(){if(_pollTimer){clearInterval(_pollTimer);_pollTimer=null;}}
 
 // ============ AUTH ============
 function renderAuth(){
@@ -342,11 +405,14 @@ function doLogin(){
   if(!name||!pw){showErr('li-err','이름과 비밀번호를 입력해주세요.');return;}
   if(name===ADMIN_ID&&pw===ADMIN_PW){
     state.user={id:'admin',name:'관리자',studentYear:'관리자',clubs:Object.keys(CLUBS),gender:'-'};
-    state.isAdmin=true;state.page='home';render();return;
+    state.isAdmin=true;state.page='home';
+    document.body.innerHTML='<div style="min-height:100vh;display:flex;align-items:center;justify-content:center"><div style="text-align:center;color:#9B7878;font-size:13px"><div style="border:2px solid #F28B8B;border-top-color:transparent;border-radius:50%;width:24px;height:24px;animation:spin 0.8s linear infinite;margin:0 auto 10px"></div>로그인 중...</div></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
+    loadFromFirebase().then(()=>{render();startPolling();});return;
   }
   const m=state.members.find(x=>x.name===name&&x.password===pw);
   if(!m){showErr('li-err','이름 또는 비밀번호가 일치하지 않습니다.');return;}
-  state.user=m;state.isAdmin=false;state.page='home';render();
+  state.user=m;state.isAdmin=false;state.page='home';
+  loadFromFirebase().then(()=>{render();startPolling();});
 }
 
 function doRegister(){
@@ -364,7 +430,7 @@ function doRegister(){
   if(state.members.find(m=>m.name===name&&m.studentYear===year))return showErr('rg-err','이미 등록된 이름+학번 조합입니다.');
   const m={id:uid(),name,studentYear:year,gender,clubs:[..._selClubs],password:pw,status:_selStatus,joinedAt:new Date().toISOString()};
   state.members.push(m);state.user=m;state.isAdmin=false;state.page='home';
-  _selClubs=[];_selStatus='active';render();
+  _selClubs=[];_selStatus='active';save();loadFromFirebase().then(()=>{render();startPolling();});
 }
 
 // ============ APP SHELL ============
@@ -407,7 +473,7 @@ function renderApp(){
 }
 
 function goPage(id){state.page=id;state.subPage={};render();}
-function doLogout(){state.user=null;state.isAdmin=false;state.authMode='login';render();}
+function doLogout(){stopPolling();state.user=null;state.isAdmin=false;state.authMode='login';render();}
 
 // ============ HOME ============
 function renderHome(){
@@ -914,7 +980,10 @@ function renderIntegrated(){
         <div style="width:4px;height:20px;background:var(--pink);border-radius:2px"></div>
         <h1 style="font-size:19px;font-weight:800;font-family:'Nanum Myeongjo',serif">통합 현황</h1>
       </div>
-      <p style="color:var(--muted);font-size:12px;padding-left:12px">3개 동아리 실시간 통계 · 누구나 볼 수 있습니다</p>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <p style="color:var(--muted);font-size:12px;padding-left:12px">3개 동아리 실시간 통계 · 누구나 볼 수 있습니다</p>
+        <button onclick="loadFromFirebase().then(()=>render())" class="btn btn-g btn-sm" style="font-size:11px">🔄 새로고침</button>
+      </div>
     </div>
   </div>
   <div class="content">${summaryCards}${clubCards}${tabHtml}${tabBody}</div>`;
@@ -1005,10 +1074,13 @@ function renderAdmin(){
 
   return `
   <div style="background:linear-gradient(135deg,#FFF0F0 0%,#fff 60%);border-bottom:1.5px solid var(--bdr);padding:24px 20px 18px">
-    <div style="max-width:1100px;margin:0 auto;display:flex;align-items:center;gap:8px">
-      <div style="width:4px;height:20px;background:var(--pink);border-radius:2px"></div>
-      <div><h1 style="font-size:19px;font-weight:800;font-family:'Nanum Myeongjo',serif">관리자 패널</h1>
-      <p style="color:var(--muted);font-size:12px">모든 데이터를 관리합니다</p></div>
+    <div style="max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="width:4px;height:20px;background:var(--pink);border-radius:2px"></div>
+        <div><h1 style="font-size:19px;font-weight:800;font-family:'Nanum Myeongjo',serif">관리자 패널</h1>
+        <p style="color:var(--muted);font-size:12px">모든 데이터를 관리합니다 · 10초마다 자동 갱신</p></div>
+      </div>
+      <button onclick="loadFromFirebase().then(()=>render())" class="btn btn-g btn-sm" style="font-size:12px">🔄 지금 새로고침</button>
     </div>
   </div>
   <div class="content">${tabHtml}${body}</div>`;
@@ -1355,7 +1427,33 @@ function showPwReq(){
 }
 
 // ============ START ============
-render();
+// 로딩 화면 표시 후 Firebase 데이터 로드
+document.body.innerHTML=`
+<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(160deg,#fff 60%,#FFF0F0 100%)">
+  <div style="text-align:center">
+    <div style="display:flex;justify-content:center;gap:12px;margin-bottom:20px">
+      <div style="width:48px;height:48px;border-radius:13px;background:linear-gradient(135deg,#9B8EC4,#F28B8B);display:flex;align-items:center;justify-content:center;font-size:22px;animation:pulse 1.2s ease-in-out infinite">🕐</div>
+      <div style="width:48px;height:48px;border-radius:13px;background:linear-gradient(135deg,#D4864A,#F5A623);display:flex;align-items:center;justify-content:center;font-size:22px;animation:pulse 1.2s ease-in-out infinite .2s">🔥</div>
+      <div style="width:48px;height:48px;border-radius:13px;background:linear-gradient(135deg,#4A7FC4,#5BA3F5);display:flex;align-items:center;justify-content:center;font-size:22px;animation:pulse 1.2s ease-in-out infinite .4s">🔍</div>
+    </div>
+    <div style="font-family:'Nanum Myeongjo',serif;font-size:26px;font-weight:800;color:#F28B8B;margin-bottom:8px">낭만모임</div>
+    <div style="font-size:13px;color:#9B7878;margin-bottom:24px">부경대 사회복지 전공동아리</div>
+    <div style="display:flex;align-items:center;gap:8px;justify-content:center;color:#C4A0A0;font-size:13px">
+      <div style="width:16px;height:16px;border:2px solid #F28B8B;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+      데이터 불러오는 중...
+    </div>
+  </div>
+  <style>
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.7;transform:scale(.95)}}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</div>`;
+
+(async()=>{
+  await loadFromFirebase();
+  render();
+  startPolling();
+})();
 </script>
 </body>
 </html>
