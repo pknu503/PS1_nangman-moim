@@ -210,9 +210,11 @@ async function loadFromFirebase(){
 
 // ============ HELPERS ============
 function logoImg(club,size=28,radius=7){
-  return `<div style="width:${size}px;height:${size}px;border-radius:${radius}px;overflow:hidden;border:1.5px solid ${club.color}40;flex-shrink:0;background:${club.color}15;display:flex;align-items:center;justify-content:center;">
-    <img src="${club.logo}" alt="${club.name}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none';this.parentNode.innerHTML='<span style=font-size:${Math.round(size*.5)}px>${club.emoji}</span>'">
-  </div>`;
+  const half=Math.round(size*.5);
+  const fallback=club.emoji;
+  return '<div style="width:'+size+'px;height:'+size+'px;border-radius:'+radius+'px;overflow:hidden;border:1.5px solid '+club.color+'40;flex-shrink:0;background:'+club.color+'15;display:flex;align-items:center;justify-content:center;">'
+    +'<img src="'+club.logo+'" alt="'+club.name+'" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none';this.parentNode.innerHTML='<span style=&quot;font-size:'+half+'px&quot;>'+fallback+'</span>'">'
+    +'</div>';
 }
 function fmtDate(d){return new Date(d).toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'})}
 function fmtShort(d){return new Date(d).toLocaleDateString('ko-KR')}
@@ -220,12 +222,31 @@ function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function psMark(status){
   const isGrad=status==='graduated';
-  return `<span style="font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;background:${isGrad?'#F28B8B':'#2E7EC7'};color:#fff;letter-spacing:0.5px;vertical-align:middle;flex-shrink:0">${isGrad?'PS0':'PS1'}</span>`;
+  const bg=isGrad?'#F28B8B':'#2E7EC7';
+  const label=isGrad?'PS0':'PS1';
+  return '<span style="font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;background:'+bg+';color:#fff;letter-spacing:0.5px;vertical-align:middle;flex-shrink:0">'+label+'</span>';
 }
 function memberLabel(m){
   return `${esc(m.name)}(${String(m.studentYear).slice(2)}) ${psMark(m.status)}`;
 }
 
+
+
+function emptyState(ico, msg){
+  return '<div class="empty"><div class="ico">'+ico+'</div><p>'+msg+'</p></div>';
+}
+function makeTabHtml(tabs, activeId, subPageKey){
+  return '<div class="tabs">'+tabs.map(function(t){
+    var id=t[0],label=t[1];
+    return '<button class="tab '+(activeId===id?'active':'')+'" onclick="setSubPage(\''+subPageKey+'\',\''+id+'\')">'+label+'</button>';
+  }).join('')+'</div>';
+}
+function makeTabHtmlPage(tabs, activeId, pageKey){
+  return '<div class="tabs">'+tabs.map(function(t){
+    var id=t[0],label=t[1];
+    return '<button class="tab '+(activeId===id?'active':'')+'" onclick="goPage(\''+id+'\')">'+label+'</button>';
+  }).join('')+'</div>';
+}
 // ============ RENDER ENGINE ============
 function render(){
   // save()를 render에서 제거 - 데이터 변경시에만 저장
@@ -448,9 +469,8 @@ function renderApp(){
 
   const navBtns=items.map(([id,label])=>{
     const c=CLUBS[id];
-    return `<button class="nav-btn ${pg===id?'active':''}" onclick="goPage('${id}')">
-      ${c?`<div style="width:16px;height:16px;border-radius:4px;overflow:hidden">${logoImg(c,16,4)}</div>`:''}
-      ${label}</button>`;
+    const logoHtml=c?('<div style="width:16px;height:16px;border-radius:4px;overflow:hidden">'+logoImg(c,16,4)+'</div>'):'';
+    return '<button class="nav-btn '+(pg===id?'active':'')+'" onclick="goPage(\''+id+'\')">'+logoHtml+' '+label+'</button>';
   }).join('');
 
   document.body.innerHTML=`
@@ -466,7 +486,7 @@ function renderApp(){
         <button class="btn btn-g btn-sm" onclick="doLogout()">로그아웃</button>
       </div>
     </div>
-    <div class="mobile-nav">${items.map(([id,label])=>`<button class="nav-btn ${pg===id?'active':''}" onclick="goPage('${id}')" style="font-size:12px;white-space:nowrap">${label}</button>`).join('')}</div>
+    <div class="mobile-nav">${items.map(([id,label])=>'<button class="nav-btn '+(pg===id?'active':'')+'" onclick="goPage(\''+id+'\')" style="font-size:12px;white-space:nowrap">'+label+'</button>').join('')}</div>
   </nav>
   <div id="main-content"></div>`;
 
@@ -546,7 +566,7 @@ function renderHome(){
         <div style="flex:1;min-width:240px">
           <h1 class="hero-title">낭만 있는<br><span style="color:var(--pink)">사복 이야기</span></h1>
           <p style="color:var(--muted);font-size:13px;line-height:1.8;margin-bottom:16px">사회복지학전공은 새로운 시대 변화에 대응하는<br>다양한 소통 네트워크를 지향합니다.</p>
-          ${!state.isAdmin?`<div style="display:flex;gap:6px;flex-wrap:wrap">${(state.user.clubs||[]).map(id=>`<span class="club-tag" style="color:${CLUBS[id]?.color};border-color:${CLUBS[id]?.color};background:${CLUBS[id]?.color}12">${CLUBS[id]?.name}</span>`).join('')}</div>`:''}
+          ${!state.isAdmin?('<div style="display:flex;gap:6px;flex-wrap:wrap">'+(state.user.clubs||[]).map(id=>'<span class="club-tag" style="color:'+(CLUBS[id]?.color||'')+';border-color:'+(CLUBS[id]?.color||'')+';background:'+(CLUBS[id]?.color||'')+'12">'+(CLUBS[id]?.name||'')+'</span>').join('')+'</div>'):''}
         </div>
         <div style="display:flex;gap:12px;flex-wrap:wrap">${clubCards}</div>
       </div>
@@ -622,8 +642,8 @@ function renderClub(clubId){
   </div></div>`;
 
   const tab=state.subPage.clubTab||'board';
-  const tabs=[[`board`,`${club.boardName||'게시판'}`],['schedule','일정'],['event','이벤트'],['attendance','출석'],['members','회원']];
-  const tabHtml=`<div class="tabs">${tabs.map(([id,label])=>`<button class="tab ${tab===id?'active':''}" onclick="setSubPage('clubTab','${id}')">${label}</button>`).join('')}</div>`;
+  const tabs=[[club.boardName||'게시판','board'],['일정','schedule'],['이벤트','event'],['출석','attendance'],['회원','members']];
+  const tabHtml=makeTabHtml(tabs.map(t=>[t[1],t[0]]),tab,'clubTab');
 
   let body='';
   if(tab==='board')body=renderClubBoard(clubId,club);
@@ -677,7 +697,7 @@ function renderClubBoard(clubId,club){
       <button style="padding:8px 18px;background:${club.color};color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-family:'Noto Sans KR',sans-serif;font-size:13px" onclick="submitPost('${clubId}')">등록</button>
     </div>
   </div>
-  ${posts.length===0?`<div class="empty"><div class="ico">💬</div><p>첫 번째 글을 남겨보세요!</p></div>`:postCards}`;
+  ${posts.length===0?emptyState('💬','첫 번째 글을 남겨보세요!'):postCards}`;
 }
 
 function submitPost(clubId){
@@ -772,7 +792,7 @@ function renderClubEvent(clubId,club){
     ${state.isAdmin?`<button class="btn btn-p btn-sm" onclick="document.getElementById('ev-form').style.display='block'">+ 이벤트 추가</button>`:''}
   </div>
   ${formHtml}
-  ${events.length===0?`<div class="empty"><div class="ico">🎊</div><p>등록된 이벤트가 없습니다.</p></div>`:cards}`;
+  ${events.length===0?emptyState('🎊','등록된 이벤트가 없습니다.'):cards}`;
 }
 
 function submitEvent(clubId){
@@ -831,7 +851,7 @@ function renderClubAttend(clubId,club){
     <label class="lbl" style="margin:0;white-space:nowrap">날짜:</label>
     <input class="inp" type="date" value="${dateVal}" onchange="state.attendDate=this.value;render()" style="width:auto">
   </div>
-  ${clubMembers.length===0?`<div class="empty"><div class="ico">👥</div><p>회원이 없습니다.</p></div>`:rows}`;
+  ${clubMembers.length===0?emptyState('👥','회원이 없습니다.'):rows}`;
 }
 
 function markAttend(clubId,memberId,date,status){
@@ -844,15 +864,18 @@ function markAttend(clubId,memberId,date,status){
 function renderClubMembers(clubId,club){
   const members=state.members.filter(m=>m.clubs?.includes(clubId));
   return `<h2 class="sec-title">동아리 회원 (${members.length}명)</h2>
-  ${members.length===0?`<div class="empty"><div class="ico">👤</div><p>가입된 회원이 없습니다.</p></div>`:`
-  <div class="g2">${members.map(m=>`
-    <div class="card" style="padding:16px 20px;display:flex;align-items:center;gap:14px">
-      <div style="width:44px;height:44px;border-radius:14px;background:${club.color}15;border:2px solid ${club.color}40;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:${club.color}">${esc(m.name[0])}</div>
-      <div><div style="font-weight:700;font-size:14px;display:flex;align-items:center;gap:5px">${esc(m.name)}(${String(m.studentYear).slice(2)}) ${psMark(m.status)}</div>
-      <div style="font-size:12px;color:var(--muted)">${m.studentYear}학번 · ${m.gender==='male'?'남':m.gender==='female'?'여':'기타'} · ${m.status==='graduated'?'졸업생':'현역'}</div>
-      <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">${(m.clubs||[]).map(c=>`<span style="padding:1px 7px;border-radius:10px;background:${CLUBS[c]?.color}15;color:${CLUBS[c]?.color};font-size:10px;font-weight:700">${CLUBS[c]?.name}</span>`).join('')}</div>
-      </div>
-    </div>`).join('')}</div>`}`;
+  ${(()=>{
+    if(members.length===0) return emptyState('👤','가입된 회원이 없습니다.');
+    return '<div class="g2">'+members.map(m=>{
+      const badges=(m.clubs||[]).map(c=>'<span style="padding:1px 7px;border-radius:10px;background:'+(CLUBS[c]?.color||'#999')+'15;color:'+(CLUBS[c]?.color||'#999')+';font-size:10px;font-weight:700">'+(CLUBS[c]?.name||c)+'</span>').join('');
+      return '<div class="card" style="padding:16px 20px;display:flex;align-items:center;gap:14px">'
+        +'<div style="width:44px;height:44px;border-radius:14px;background:'+club.color+'15;border:2px solid '+club.color+'40;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:'+club.color+'">'+esc(m.name[0])+'</div>'
+        +'<div><div style="font-weight:700;font-size:14px;display:flex;align-items:center;gap:5px">'+esc(m.name)+'('+String(m.studentYear).slice(2)+') '+psMark(m.status)+'</div>'
+        +'<div style="font-size:12px;color:var(--muted)">'+m.studentYear+'학번 · '+(m.gender==='male'?'남':m.gender==='female'?'여':'기타')+' · '+(m.status==='graduated'?'졸업생':'현역')+'</div>'
+        +'<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">'+badges+'</div>'
+        +'</div></div>';
+    }).join('')+'</div>';
+  })()}`;
 }
 
 // ============ INTEGRATED ============
@@ -876,7 +899,7 @@ function renderIntegrated(){
 
   const tab=state.subPage.intTab||'overview';
   const tabs=[['overview','📊 전체 현황'],['attendance','✅ 출석'],['compare','⚖️ 비교'],['members','👥 전체 회원']];
-  const tabHtml=`<div class="tabs">${tabs.map(([id,label])=>`<button class="tab ${tab===id?'active':''}" onclick="setSubPage('intTab','${id}')">${label}</button>`).join('')}</div>`;
+  const tabHtml=makeTabHtml(tabs,tab,'intTab');
 
   const totalM=state.members.length;
   const totalP=state.posts.length;
@@ -961,9 +984,9 @@ function renderIntegrated(){
     </div>`;
   } else if(tab==='compare'){
     const rows=[
-      ['총 회원',c=>`${c.memberCount}명`],['남성',c=>`${c.male}명`],['여성',c=>`${c.female}명`],
-      ['게시글',c=>`${c.posts}개`],['일정',c=>`${c.scheds}건`],['이벤트',c=>`${c.evts}건`],
-      ['출석률',c=>`${c.rate}%`],['출석기록',c=>`${c.total}건`],
+      ['총 회원',c=>c.memberCount+'명'],['남성',c=>c.male+'명'],['여성',c=>c.female+'명'],
+      ['게시글',c=>c.posts+'개'],['일정',c=>c.scheds+'건'],['이벤트',c=>c.evts+'건'],
+      ['출석률',c=>c.rate+'%'],['출석기록',c=>c.total+'건'],
     ];
     tabBody=`<div class="card" style="overflow-x:auto">
       <table>
@@ -976,7 +999,7 @@ function renderIntegrated(){
     </div>`;
   } else if(tab==='members'){
     tabBody=`<h2 class="sec-title">전체 회원 (${state.members.length}명)</h2>
-    ${state.members.length===0?`<div class="empty"><div class="ico">👤</div><p>등록된 회원이 없습니다.</p></div>`:`
+    ${state.members.length===0?emptyState('👤','등록된 회원이 없습니다.'):`
     <div style="overflow-x:auto"><table>
       <thead><tr><th>이름</th><th>학번</th><th>성별</th><th>소속 동아리</th><th>가입일</th></tr></thead>
       <tbody>${state.members.map((m,i)=>`<tr style="background:${i%2===0?'#fff':'var(--sur2)'}">
@@ -1011,13 +1034,13 @@ function renderAdmin(){
   const tab=state.subPage.adminTab||'members';
   const pendingPwCount=state.pwRequests.filter(r=>r.status==='pending').length;
   const tabs=[['members','👥 회원'],['posts','📝 게시글'],['promos','📢 홍보글'],['schedules','📅 일정·이벤트'],['pwreq','🔑 비번요청'+(pendingPwCount>0?' ('+pendingPwCount+')':'')],['withdrawals','🚫 탈퇴이력('+state.withdrawals.length+')']];
-  const tabHtml=`<div class="tabs">${tabs.map(([id,label])=>`<button class="tab ${tab===id?'active':''}" onclick="setSubPage('adminTab','${id}')">${label}</button>`).join('')}</div>`;
+  const tabHtml=makeTabHtml(tabs,tab,'adminTab');
 
   let body='';
   if(tab==='members'){
     const YEARS2=Array.from({length:41},(_,i)=>2010+i);
     body=`<h2 class="sec-title">회원 관리 (${state.members.length}명)</h2>
-    ${state.members.length===0?`<div class="empty"><div class="ico">👤</div><p>등록된 회원이 없습니다.</p></div>`:
+    ${state.members.length===0?emptyState('👤','등록된 회원이 없습니다.'):
     state.members.map(m=>`<div class="card" style="margin-bottom:10px;padding:16px 20px">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div style="display:flex;align-items:center;gap:14px">
