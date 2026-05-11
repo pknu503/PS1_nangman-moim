@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
+  CalendarDays,
   CheckCircle2,
+  FileText,
   Home,
+  Image as ImageIcon,
   KeyRound,
   LogOut,
   Megaphone,
@@ -27,7 +30,12 @@ const STORAGE = {
   members: "nm_members",
   posts: "nm_posts",
   promos: "nm_promos",
+  schedules: "nm_schedules",
+  events: "nm_events",
   attendance: "nm_attend",
+  resources: "nm_resources",
+  pwRequests: "nm_pwreq",
+  withdrawals: "nm_withdrawals",
 };
 
 const CLUBS = {
@@ -35,29 +43,46 @@ const CLUBS = {
     id: "hora",
     name: "오라",
     english: "Hora",
+    boardName: "오라타임",
     color: "#7d65b3",
     bg: "#f1edf9",
-    boardName: "오라타임",
+    image: "/assets/hora.jpg",
+    description: "시간을 함께하며 현장과 사람을 배우는 동아리",
   },
   myth: {
     id: "myth",
     name: "클럽신화",
     english: "MYTH",
+    boardName: "신화창조",
     color: "#bd6538",
     bg: "#fff0e8",
-    boardName: "신화창조",
+    image: "/assets/myth.jpg",
+    description: "새로운 이야기를 기획하고 기록하는 동아리",
   },
   theme: {
     id: "theme",
     name: "띰",
     english: "Theme",
+    boardName: "테마찾기",
     color: "#3f73bc",
     bg: "#eaf1fb",
-    boardName: "테마찾기",
+    image: "/assets/theme.png",
+    description: "주제를 탐구하고 발표하며 성장하는 동아리",
   },
 };
 
 const CLUB_LIST = Object.values(CLUBS);
+const EMPTY_DATA = {
+  members: [],
+  posts: [],
+  promos: [],
+  schedules: [],
+  events: [],
+  attendance: [],
+  resources: [],
+  pwRequests: [],
+  withdrawals: [],
+};
 
 export default function App() {
   const [data, setData] = useState(readLocalData);
@@ -66,6 +91,9 @@ export default function App() {
   const [authMode, setAuthMode] = useState("login");
   const [page, setPage] = useState(user ? "home" : "auth");
   const [selectedClubId, setSelectedClubId] = useState("hora");
+  const [clubTab, setClubTab] = useState("board");
+  const [adminTab, setAdminTab] = useState("members");
+  const [integratedTab, setIntegratedTab] = useState("overview");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -105,8 +133,12 @@ export default function App() {
     return data.members.find((member) => member.id === user.id) || user;
   }, [data.members, isAdmin, user]);
 
-  const selectedClub = CLUBS[selectedClubId];
-  const myClubIds = isAdmin ? CLUB_LIST.map((club) => club.id) : sessionUser?.clubs || [];
+  const myClubIds = isAdmin
+    ? CLUB_LIST.map((club) => club.id)
+    : sessionUser?.clubs || [];
+  const selectedClub = CLUBS[selectedClubId] || CLUBS.hora;
+  const stats = useMemo(() => buildStats(data), [data]);
+  const pendingPwCount = data.pwRequests.filter((req) => req.status === "pending").length;
 
   async function refreshData({ silent = false } = {}) {
     if (!silent) setLoading(true);
@@ -131,7 +163,7 @@ export default function App() {
   async function login(form) {
     clearAlerts();
     if (!form.name.trim() || !form.password.trim()) {
-      setError("이름과 비밀번호를 입력해주세요.");
+      setError("이름과 비밀번호를 입력해주세요. 비밀번호는 숫자 8자리입니다.");
       return;
     }
 
@@ -148,6 +180,11 @@ export default function App() {
       setIsAdmin(true);
       setPage("home");
       setLoading(false);
+      return;
+    }
+
+    if (!/^\d{8}$/.test(form.password.trim())) {
+      setError("일반 회원 비밀번호는 숫자 8자리입니다.");
       return;
     }
 
@@ -251,7 +288,6 @@ export default function App() {
       ...current,
       members: upsertById(current.members, updated),
     }));
-
     await persistMember(updated);
     const saved = await fbGet(`members/${firebaseRecordKey(updated, updated.id)}`);
     if (!saved) throw new Error("Firebase 저장 확인에 실패했습니다.");
@@ -286,27 +322,123 @@ export default function App() {
   }
 
   async function addPromo(form) {
-    if (!form.title.trim() || !form.content.trim()) return;
-    const item = {
+    const clubIds = form.clubId === "all" ? CLUB_LIST.map((club) => club.id) : [form.clubId];
+    const newPromos = clubIds.map((clubId) => ({
       id: makeId("promo"),
-      clubId: form.clubId,
+      clubId,
       title: form.title.trim(),
       content: form.content.trim(),
       authorId: sessionUser.id,
       authorName: sessionUser.name,
+      isGlobal: form.clubId === "all",
+      createdAt: now(),
+    }));
+    if (!form.title.trim() || !form.content.trim()) return;
+    setData((current) => ({ ...current, promos: [...newPromos, ...current.promos] }));
+    await fbPatch("promos", Object.fromEntries(newPromos.map((item) => [firebaseKey(item.id), cleanFirebase(item)])));
+  }
+
+  async function addSchedule(collection, form) {
+    if (!form.title.trim()) return;
+    const item = {
+      id: makeId(collection),
+      clubId: selectedClubId,
+      title: form.title.trim(),
+      date: form.date,
+      kind: form.kind || "",
+      description: form.description.trim(),
       createdAt: now(),
     };
-    setData((current) => ({ ...current, promos: [item, ...current.promos] }));
-    await fbPatch("promos", { [firebaseKey(item.id)]: cleanFirebase(item) });
+    setData((current) => ({ ...current, [collection]: [item, ...current[collection]] }));
+    await fbPatch(collection, { [firebaseKey(item.id)]: cleanFirebase(item) });
+  }
+
+  async function markAttendance(memberId, date, status) {
+    const key = `${selectedClubId}_${memberId}_${date}`;
+    const item = { key, clubId: selectedClubId, memberId, date, status, updatedAt: now() };
+    setData((current) => ({ ...current, attendance: upsertByKey(current.attendance, item, "key") }));
+    await fbPatch("attendance", { [firebaseKey(key)]: cleanFirebase(item) });
+  }
+
+  async function addResource(form) {
+    if (!form.title.trim()) return;
+    const item = {
+      id: makeId("resource"),
+      clubId: form.clubId,
+      type: form.type,
+      title: form.title.trim(),
+      note: form.note.trim(),
+      imageUrl: form.imageUrl,
+      createdAt: now(),
+    };
+    setData((current) => ({ ...current, resources: [item, ...current.resources] }));
+    await fbPatch("resources", { [firebaseKey(item.id)]: cleanFirebase(item) });
+  }
+
+  async function submitPwRequest(msg) {
+    const exists = data.pwRequests.find(
+      (req) => req.memberId === sessionUser.id && req.status === "pending",
+    );
+    if (exists) {
+      setError("이미 처리 대기 중인 요청이 있습니다.");
+      return;
+    }
+    const item = {
+      id: makeId("pwreq"),
+      memberId: sessionUser.id,
+      memberName: sessionUser.name,
+      studentYear: sessionUser.studentYear,
+      message: msg.trim(),
+      status: "pending",
+      adminReply: "",
+      createdAt: now(),
+    };
+    setData((current) => ({ ...current, pwRequests: [item, ...current.pwRequests] }));
+    await fbPatch("pwRequests", { [firebaseKey(item.id)]: cleanFirebase(item) });
+    setMessage("비밀번호 찾기 요청을 관리자에게 보냈습니다.");
+  }
+
+  async function replyPwRequest(req, reply) {
+    const updated = { ...req, status: "done", adminReply: reply.trim(), repliedAt: now() };
+    setData((current) => ({ ...current, pwRequests: upsertById(current.pwRequests, updated) }));
+    await fbPatch("pwRequests", { [firebaseRecordKey(req, req.id)]: cleanFirebase(updated) });
+  }
+
+  async function forceWithdraw(member, reason) {
+    if (!reason.trim()) throw new Error("탈퇴 사유를 입력해주세요.");
+    const item = {
+      id: makeId("withdraw"),
+      memberId: member.id,
+      memberName: member.name,
+      studentYear: member.studentYear,
+      clubs: member.clubs || [],
+      status: member.status || "active",
+      reason: reason.trim(),
+      withdrawnAt: now(),
+      withdrawnBy: "관리자",
+    };
+    setData((current) => ({
+      ...current,
+      members: current.members.filter((m) => m.id !== member.id),
+      withdrawals: [item, ...current.withdrawals],
+    }));
+    await fbPatch("withdrawals", { [firebaseKey(item.id)]: cleanFirebase(item) });
+    await fbDelete(`members/${firebaseRecordKey(member, member.id)}`);
   }
 
   async function deleteRecord(collection, record) {
     if (!window.confirm("삭제할까요?")) return;
     setData((current) => ({
       ...current,
-      [collection]: current[collection].filter((item) => item.id !== record.id),
+      [collection]: current[collection].filter((item) => item.id !== record.id && item.key !== record.key),
     }));
-    await fbDelete(`${collection}/${firebaseRecordKey(record, record.id)}`);
+    await fbDelete(`${collection}/${firebaseRecordKey(record, record.id || record.key)}`);
+  }
+
+  function openClub(clubId) {
+    setSelectedClubId(clubId);
+    setClubTab("board");
+    setPage("club");
   }
 
   function logout() {
@@ -347,7 +479,7 @@ export default function App() {
           <NavButton id="home" page={page} setPage={setPage} icon={Home} label="홈" />
           <NavButton id="integrated" page={page} setPage={setPage} icon={BarChart3} label="통합현황" />
           <NavButton id="club" page={page} setPage={setPage} icon={Users} label="동아리" />
-          {isAdmin && <NavButton id="admin" page={page} setPage={setPage} icon={ShieldCheck} label="관리자" />}
+          {isAdmin && <NavButton id="admin" page={page} setPage={setPage} icon={ShieldCheck} label={`관리자${pendingPwCount ? ` ${pendingPwCount}` : ""}`} />}
           {!isAdmin && <NavButton id="profile" page={page} setPage={setPage} icon={User} label="내 정보" />}
         </nav>
         <div className="session">
@@ -367,14 +499,20 @@ export default function App() {
           isAdmin={isAdmin}
           user={sessionUser}
           myClubIds={myClubIds}
-          setPage={setPage}
-          setSelectedClubId={setSelectedClubId}
+          openClub={openClub}
           addPromo={addPromo}
           deletePromo={(promo) => deleteRecord("promos", promo)}
         />
       )}
       {page === "integrated" && (
-        <IntegratedPage data={data} loading={loading} refresh={() => refreshData()} />
+        <IntegratedPage
+          data={data}
+          stats={stats}
+          tab={integratedTab}
+          setTab={setIntegratedTab}
+          loading={loading}
+          refresh={() => refreshData()}
+        />
       )}
       {page === "club" && (
         <ClubPage
@@ -383,16 +521,37 @@ export default function App() {
           isAdmin={isAdmin}
           selectedClub={selectedClub}
           selectedClubId={selectedClubId}
-          setSelectedClubId={setSelectedClubId}
+          openClub={openClub}
+          tab={clubTab}
+          setTab={setClubTab}
           addPost={addPost}
           deletePost={(post) => deleteRecord("posts", post)}
+          addSchedule={addSchedule}
+          deleteSchedule={(collection, record) => deleteRecord(collection, record)}
+          markAttendance={markAttendance}
         />
       )}
       {page === "profile" && !isAdmin && (
-        <ProfilePage user={sessionUser} saveProfile={saveProfile} changePassword={changePassword} />
+        <ProfilePage
+          data={data}
+          user={sessionUser}
+          saveProfile={saveProfile}
+          changePassword={changePassword}
+          submitPwRequest={submitPwRequest}
+        />
       )}
       {page === "admin" && isAdmin && (
-        <AdminPage data={data} deleteRecord={deleteRecord} refresh={() => refreshData()} />
+        <AdminPage
+          data={data}
+          stats={stats}
+          tab={adminTab}
+          setTab={setAdminTab}
+          deleteRecord={deleteRecord}
+          addResource={addResource}
+          replyPwRequest={replyPwRequest}
+          forceWithdraw={forceWithdraw}
+          refresh={() => refreshData()}
+        />
       )}
     </main>
   );
@@ -404,13 +563,13 @@ function AuthScreen({ mode, setMode, login, register, loading, error, message })
       <section className="auth-card">
         <h1>낭만모임</h1>
         <p>부경대 사회복지 전공동아리</p>
+        <ClubImageGrid compact />
+        <div className="notice">
+          일반 회원 비밀번호는 <strong>숫자 8자리</strong>입니다. 예: 생년월일 8자리
+        </div>
         <div className="tabs">
-          <button className={mode === "login" ? "active" : ""} type="button" onClick={() => setMode("login")}>
-            로그인
-          </button>
-          <button className={mode === "register" ? "active" : ""} type="button" onClick={() => setMode("register")}>
-            신규 가입
-          </button>
+          <button className={mode === "login" ? "active" : ""} type="button" onClick={() => setMode("login")}>로그인</button>
+          <button className={mode === "register" ? "active" : ""} type="button" onClick={() => setMode("register")}>신규 가입</button>
         </div>
         {(message || error) && <div className={error ? "alert error" : "alert"}>{error || message}</div>}
         {mode === "login" ? <LoginForm login={login} loading={loading} /> : <RegisterForm register={register} loading={loading} />}
@@ -425,7 +584,7 @@ function LoginForm({ login, loading }) {
     <form className="form" onSubmit={(event) => { event.preventDefault(); login(form); }}>
       <label>
         이름 또는 관리자 ID
-        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="이름 입력" />
       </label>
       <label>
         비밀번호
@@ -434,6 +593,7 @@ function LoginForm({ login, loading }) {
           maxLength={8}
           value={form.password}
           onChange={(event) => setForm({ ...form, password: event.target.value.replace(/\D/g, "") })}
+          placeholder="숫자 8자리"
         />
       </label>
       <button className="primary" disabled={loading} type="submit">로그인</button>
@@ -465,7 +625,7 @@ function RegisterForm({ register, loading }) {
     <form className="form" onSubmit={(event) => { event.preventDefault(); register(form); }}>
       <label>
         이름
-        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="실명 입력" />
       </label>
       <div className="two">
         <label>
@@ -487,11 +647,12 @@ function RegisterForm({ register, loading }) {
       <label>
         재적 상태
         <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
-          <option value="active">현역</option>
-          <option value="graduated">졸업생</option>
+          <option value="active">현역 PS1</option>
+          <option value="graduated">졸업생 PS0</option>
         </select>
       </label>
-      <ClubPicker selected={form.clubs} toggle={toggleClub} />
+      <ClubPicker selected={form.clubs} toggle={toggleClub} imageMode />
+      <div className="notice">비밀번호는 반드시 <strong>숫자 8자리</strong>로 설정해주세요.</div>
       <div className="two">
         <label>
           비밀번호
@@ -500,6 +661,7 @@ function RegisterForm({ register, loading }) {
             maxLength={8}
             value={form.password}
             onChange={(event) => setForm({ ...form, password: event.target.value.replace(/\D/g, "") })}
+            placeholder="숫자 8자리"
           />
         </label>
         <label>
@@ -509,6 +671,7 @@ function RegisterForm({ register, loading }) {
             maxLength={8}
             value={form.passwordConfirm}
             onChange={(event) => setForm({ ...form, passwordConfirm: event.target.value.replace(/\D/g, "") })}
+            placeholder="다시 입력"
           />
         </label>
       </div>
@@ -517,10 +680,9 @@ function RegisterForm({ register, loading }) {
   );
 }
 
-function HomePage({ data, isAdmin, user, myClubIds, setPage, setSelectedClubId, addPromo, deletePromo }) {
-  const [form, setForm] = useState({ clubId: myClubIds[0] || "hora", title: "", content: "" });
-  const visiblePromos = isAdmin ? data.promos : data.promos.filter((promo) => myClubIds.includes(promo.clubId));
+function HomePage({ data, isAdmin, user, myClubIds, openClub, addPromo, deletePromo }) {
   const writableClubs = isAdmin ? CLUB_LIST : CLUB_LIST.filter((club) => user.clubs?.includes(club.id));
+  const visiblePromos = isAdmin ? data.promos : data.promos.filter((promo) => myClubIds.includes(promo.clubId));
 
   return (
     <div className="stack">
@@ -528,39 +690,13 @@ function HomePage({ data, isAdmin, user, myClubIds, setPage, setSelectedClubId, 
         <div>
           <p>국립부경대학교 사회복지학과 전공동아리</p>
           <h1>낭만 있는 사복 이야기</h1>
-          <span>정보 수정값은 Firebase의 회원 레코드와 로그인 세션에 동시에 저장됩니다.</span>
+          <span>동아리 그림을 클릭해서 각 동아리 관리 화면으로 이동하세요.</span>
         </div>
-        <div className="club-grid">
-          {CLUB_LIST.map((club) => (
-            <button
-              key={club.id}
-              className="club-card"
-              style={{ "--club": club.color, "--club-bg": club.bg }}
-              type="button"
-              onClick={() => {
-                setSelectedClubId(club.id);
-                setPage("club");
-              }}
-            >
-              <strong>{club.name}</strong>
-              <span>{data.members.filter((member) => member.clubs?.includes(club.id)).length}명</span>
-            </button>
-          ))}
-        </div>
+        <ClubImageGrid onClick={openClub} counts={data.members} />
       </section>
 
       {writableClubs.length > 0 && (
-        <section className="panel">
-          <h2><Megaphone size={19} /> 홍보글 작성</h2>
-          <form className="form" onSubmit={(event) => { event.preventDefault(); addPromo(form); setForm({ ...form, title: "", content: "" }); }}>
-            <select value={form.clubId} onChange={(event) => setForm({ ...form, clubId: event.target.value })}>
-              {writableClubs.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}
-            </select>
-            <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="제목" />
-            <textarea value={form.content} onChange={(event) => setForm({ ...form, content: event.target.value })} placeholder="내용" />
-            <button className="primary" type="submit"><Plus size={17} /> 등록</button>
-          </form>
-        </section>
+        <PromoComposer writableClubs={writableClubs} addPromo={addPromo} />
       )}
 
       <section className="panel">
@@ -571,104 +707,300 @@ function HomePage({ data, isAdmin, user, myClubIds, setPage, setSelectedClubId, 
   );
 }
 
-function IntegratedPage({ data, loading, refresh }) {
+function PromoComposer({ writableClubs, addPromo }) {
+  const [form, setForm] = useState({ clubId: writableClubs[0]?.id || "hora", title: "", content: "" });
+  const options = [{ id: "all", name: "전체 공지" }, ...writableClubs];
+
+  return (
+    <section className="panel">
+      <h2><Megaphone size={19} /> 홍보글 작성</h2>
+      <form
+        className="form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          addPromo(form);
+          setForm({ ...form, title: "", content: "" });
+        }}
+      >
+        <label>
+          홍보 대상
+          <select value={form.clubId} onChange={(event) => setForm({ ...form, clubId: event.target.value })}>
+            {options.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}
+          </select>
+        </label>
+        {form.clubId === "all" && <div className="notice">전체 공지는 각 동아리 홍보 게시판에 동시에 올라갑니다.</div>}
+        <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="제목" />
+        <textarea value={form.content} onChange={(event) => setForm({ ...form, content: event.target.value })} placeholder="내용" />
+        <button className="primary" type="submit"><Plus size={17} /> 등록</button>
+      </form>
+    </section>
+  );
+}
+
+function IntegratedPage({ data, stats, tab, setTab, loading, refresh }) {
   return (
     <div className="stack">
       <section className="toolbar">
         <h1>통합 현황</h1>
         <button type="button" onClick={refresh}><RefreshCw size={16} /> {loading ? "불러오는 중" : "새로고침"}</button>
       </section>
-      <div className="metrics">
-        <Metric label="전체 회원" value={`${data.members.length}명`} />
-        <Metric label="게시글" value={`${data.posts.length}개`} />
-        <Metric label="홍보글" value={`${data.promos.length}개`} />
+      <div className="tabs">
+        <button className={tab === "overview" ? "active" : ""} type="button" onClick={() => setTab("overview")}>전체 지표</button>
+        <button className={tab === "compare" ? "active" : ""} type="button" onClick={() => setTab("compare")}>동아리 비교</button>
+        <button className={tab === "members" ? "active" : ""} type="button" onClick={() => setTab("members")}>전체 회원</button>
       </div>
-      <section className="panel">
-        <h2><Users size={19} /> 전체 회원</h2>
-        <MemberTable members={data.members} />
-      </section>
+      {tab === "overview" && <OverviewStats data={data} stats={stats} />}
+      {tab === "compare" && <CompareStats stats={stats} />}
+      {tab === "members" && (
+        <section className="panel">
+          <h2><Users size={19} /> 전체 회원</h2>
+          <MemberTable members={data.members} />
+        </section>
+      )}
     </div>
   );
 }
 
-function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, setSelectedClubId, addPost, deletePost }) {
-  const [content, setContent] = useState("");
-  const [anonymous, setAnonymous] = useState(false);
+function OverviewStats({ data, stats }) {
+  return (
+    <>
+      <div className="metrics">
+        <Metric label="전체 회원" value={`${data.members.length}명`} />
+        <Metric label="게시글" value={`${data.posts.length}개`} />
+        <Metric label="홍보글" value={`${data.promos.length}개`} />
+        <Metric label="자료" value={`${data.resources.length}개`} />
+      </div>
+      <section className="panel">
+        <h2><BarChart3 size={19} /> 동아리별 지표</h2>
+        <div className="chart-grid">
+          {stats.map((stat) => (
+            <article className="chart-card" key={stat.club.id}>
+              <ClubBadge clubId={stat.club.id} />
+              <Bar label="회원" value={stat.members} max={Math.max(1, ...stats.map((s) => s.members))} color={stat.club.color} suffix="명" />
+              <Bar label="게시물" value={stat.posts} max={Math.max(1, ...stats.map((s) => s.posts))} color={stat.club.color} suffix="개" />
+              <Bar label="출석률" value={stat.attendanceRate} max={100} color={stat.club.color} suffix="%" />
+            </article>
+          ))}
+        </div>
+      </section>
+    </>
+  );
+}
+
+function CompareStats({ stats }) {
+  return (
+    <section className="panel">
+      <h2><BarChart3 size={19} /> 동아리별 비교</h2>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>동아리</th>
+              <th>회원 수</th>
+              <th>현역</th>
+              <th>졸업생</th>
+              <th>게시글</th>
+              <th>홍보글</th>
+              <th>출석률</th>
+              <th>자료</th>
+            </tr>
+          </thead>
+          <tbody>
+            {stats.map((stat) => (
+              <tr key={stat.club.id}>
+                <td><ClubBadge clubId={stat.club.id} /></td>
+                <td>{stat.members}</td>
+                <td>{stat.active}</td>
+                <td>{stat.graduated}</td>
+                <td>{stat.posts}</td>
+                <td>{stat.promos}</td>
+                <td>{stat.attendanceRate}%</td>
+                <td>{stat.resources}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub, tab, setTab, addPost, deletePost, addSchedule, deleteSchedule, markAttendance }) {
   const isMember = isAdmin || user.clubs?.includes(selectedClubId);
   const posts = data.posts.filter((post) => post.clubId === selectedClubId);
+  const promos = data.promos.filter((promo) => promo.clubId === selectedClubId);
   const members = data.members.filter((member) => member.clubs?.includes(selectedClubId));
 
   return (
     <div className="stack">
       <section className="club-hero" style={{ "--club": selectedClub.color, "--club-bg": selectedClub.bg }}>
+        <img src={selectedClub.image} alt={selectedClub.name} />
         <div>
           <p>{selectedClub.english}</p>
           <h1>{selectedClub.name}</h1>
-          <span>{selectedClub.boardName}</span>
+          <span>{selectedClub.description}</span>
         </div>
-        <select value={selectedClubId} onChange={(event) => setSelectedClubId(event.target.value)}>
-          {CLUB_LIST.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}
-        </select>
       </section>
-
+      <ClubImageGrid onClick={openClub} selectedId={selectedClubId} compact />
       {!isMember ? (
         <section className="panel">이 동아리의 회원이 아닙니다.</section>
       ) : (
         <>
-          <section className="panel">
-            <h2>{selectedClub.boardName}</h2>
-            <form className="form" onSubmit={(event) => { event.preventDefault(); addPost(content, anonymous); setContent(""); setAnonymous(false); }}>
-              <textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder="게시글을 남겨보세요." />
-              <label className="inline">
-                <input type="checkbox" checked={anonymous} onChange={(event) => setAnonymous(event.target.checked)} />
-                익명으로 작성
-              </label>
-              <button className="primary" type="submit"><Plus size={17} /> 등록</button>
-            </form>
-            <PostList posts={posts} isAdmin={isAdmin} currentUser={user} deletePost={deletePost} />
-          </section>
-          <section className="panel">
-            <h2><Users size={19} /> 회원</h2>
-            <MemberTable members={members} />
-          </section>
+          <div className="tabs">
+            <button className={tab === "board" ? "active" : ""} type="button" onClick={() => setTab("board")}>게시판</button>
+            <button className={tab === "promo" ? "active" : ""} type="button" onClick={() => setTab("promo")}>홍보</button>
+            <button className={tab === "monthly" ? "active" : ""} type="button" onClick={() => setTab("monthly")}>월별 일정</button>
+            <button className={tab === "weekly" ? "active" : ""} type="button" onClick={() => setTab("weekly")}>주별 일정</button>
+            <button className={tab === "event" ? "active" : ""} type="button" onClick={() => setTab("event")}>주별 이벤트</button>
+            <button className={tab === "other" ? "active" : ""} type="button" onClick={() => setTab("other")}>기타</button>
+            <button className={tab === "attendance" ? "active" : ""} type="button" onClick={() => setTab("attendance")}>출석</button>
+            <button className={tab === "members" ? "active" : ""} type="button" onClick={() => setTab("members")}>회원</button>
+          </div>
+          {tab === "board" && <BoardPanel title={selectedClub.boardName} posts={posts} user={user} isAdmin={isAdmin} addPost={addPost} deletePost={deletePost} />}
+          {tab === "promo" && (
+            <section className="panel">
+              <h2><Megaphone size={19} /> {selectedClub.name} 홍보 게시판</h2>
+              <PostList posts={promos} isAdmin={isAdmin} deletePost={() => {}} isPromo />
+            </section>
+          )}
+          {tab === "monthly" && <SchedulePanel title="월별 일정" collection="schedules" kind="monthly" items={data.schedules.filter((item) => item.clubId === selectedClubId && item.kind === "monthly")} isAdmin={isAdmin} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
+          {tab === "weekly" && <SchedulePanel title="주별 일정" collection="schedules" kind="weekly" items={data.schedules.filter((item) => item.clubId === selectedClubId && item.kind === "weekly")} isAdmin={isAdmin} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
+          {tab === "event" && <SchedulePanel title="주별 이벤트" collection="events" kind="event" items={data.events.filter((item) => item.clubId === selectedClubId)} isAdmin={isAdmin} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
+          {tab === "other" && <SchedulePanel title="기타" collection="schedules" kind="other" items={data.schedules.filter((item) => item.clubId === selectedClubId && item.kind === "other")} isAdmin={isAdmin} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
+          {tab === "attendance" && <AttendancePanel data={data} members={members} user={user} isAdmin={isAdmin} clubId={selectedClubId} markAttendance={markAttendance} />}
+          {tab === "members" && (
+            <section className="panel">
+              <h2><Users size={19} /> 회원</h2>
+              <MemberTable members={members} />
+            </section>
+          )}
         </>
       )}
     </div>
   );
 }
 
-function ProfilePage({ user, saveProfile, changePassword }) {
+function BoardPanel({ title, posts, user, isAdmin, addPost, deletePost }) {
+  const [content, setContent] = useState("");
+  const [anonymous, setAnonymous] = useState(false);
+  return (
+    <section className="panel">
+      <h2><FileText size={19} /> {title}</h2>
+      <form className="form" onSubmit={(event) => { event.preventDefault(); addPost(content, anonymous); setContent(""); setAnonymous(false); }}>
+        <textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder="게시글을 남겨보세요." />
+        <label className="inline">
+          <input type="checkbox" checked={anonymous} onChange={(event) => setAnonymous(event.target.checked)} />
+          비밀/익명 글쓰기
+        </label>
+        <button className="primary" type="submit"><Plus size={17} /> 등록</button>
+      </form>
+      <PostList posts={posts} isAdmin={isAdmin} currentUser={user} deletePost={deletePost} />
+    </section>
+  );
+}
+
+function SchedulePanel({ title, collection, kind, items, isAdmin, addSchedule, deleteSchedule }) {
+  const [form, setForm] = useState({ title: "", date: new Date().toISOString().slice(0, 10), description: "" });
+  return (
+    <section className="panel">
+      <h2><CalendarDays size={19} /> {title}</h2>
+      {isAdmin && (
+        <form className="inline-form" onSubmit={(event) => { event.preventDefault(); addSchedule(collection, { ...form, kind }); setForm({ ...form, title: "", description: "" }); }}>
+          <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder={`${title} 제목`} />
+          <input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} />
+          <input value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="메모" />
+          <button className="primary" type="submit"><Plus size={17} /> 추가</button>
+        </form>
+      )}
+      <div className="cards">
+        {items.length === 0 ? <p className="empty">등록된 항목이 없습니다.</p> : items.map((item) => (
+          <article className="post" key={item.id}>
+            <strong>{item.title}</strong>
+            <p>{formatDate(item.date)} {item.description && `· ${item.description}`}</p>
+            {isAdmin && <footer><span /> <button type="button" onClick={() => deleteSchedule(collection, item)}><Trash2 size={15} /> 삭제</button></footer>}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AttendancePanel({ data, members, user, isAdmin, clubId, markAttendance }) {
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const statuses = [["present", "출석"], ["late", "지각"], ["absent", "결석"]];
+  if (!isAdmin) {
+    const records = data.attendance.filter((item) => item.clubId === clubId && item.memberId === user.id);
+    const present = records.filter((item) => item.status === "present").length;
+    const rate = records.length ? Math.round((present / records.length) * 100) : 0;
+    return (
+      <section className="panel">
+        <h2><CheckCircle2 size={19} /> 내 출석 현황</h2>
+        <div className="metrics">
+          <Metric label="출석률" value={`${rate}%`} />
+          <Metric label="출석" value={`${present}회`} />
+          <Metric label="기록" value={`${records.length}회`} />
+        </div>
+      </section>
+    );
+  }
+  return (
+    <section className="panel">
+      <h2><CheckCircle2 size={19} /> 출석 관리</h2>
+      <label className="date-field">날짜<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+      <div className="cards">
+        {members.map((member) => {
+          const key = `${clubId}_${member.id}_${date}`;
+          const selected = data.attendance.find((item) => item.key === key)?.status;
+          return (
+            <article className="attendance-row" key={member.id}>
+              <strong>{memberLabel(member)} {psMark(member.status)}</strong>
+              <div className="button-row">
+                {statuses.map(([status, label]) => (
+                  <button className={selected === status ? "active" : ""} key={status} type="button" onClick={() => markAttendance(member.id, date, status)}>{label}</button>
+                ))}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ProfilePage({ data, user, saveProfile, changePassword, submitPwRequest }) {
   const [editing, setEditing] = useState(false);
   const [changingPw, setChangingPw] = useState(false);
+  const [requestingPw, setRequestingPw] = useState(false);
+  const myRequests = data.pwRequests.filter((req) => req.memberId === user.id);
 
   return (
     <div className="stack">
       <section className="profile">
         <div className="avatar">{user.name?.slice(0, 1)}</div>
         <div>
-          <h1>{user.name}</h1>
-          <p>{user.studentYear}학번 · {genderLabel(user.gender)} · {user.status === "graduated" ? "졸업생" : "현역"}</p>
+          <h1>{memberLabel(user)} {psMark(user.status)}</h1>
+          <p>{genderLabel(user.gender)} · {statusLabel(user.status)}</p>
           <div className="badges">{(user.clubs || []).map((clubId) => <ClubBadge key={clubId} clubId={clubId} />)}</div>
         </div>
       </section>
-
       <section className="panel">
         <h2><User size={19} /> 내 정보</h2>
         <div className="info-grid">
           <Info label="이름" value={user.name} />
           <Info label="학번" value={`${user.studentYear}학번`} />
           <Info label="성별" value={genderLabel(user.gender)} />
-          <Info label="재적 상태" value={user.status === "graduated" ? "졸업생" : "현역"} />
+          <Info label="재적 상태" value={statusLabel(user.status)} />
           <Info label="최종 수정" value={formatDate(user.updatedAt)} />
         </div>
         <div className="actions">
+          <button type="button" onClick={() => setRequestingPw(!requestingPw)}><KeyRound size={16} /> 비밀번호 찾기 요청</button>
           <button type="button" onClick={() => setChangingPw(!changingPw)}><KeyRound size={16} /> 비밀번호 변경</button>
           <button className="primary" type="button" onClick={() => setEditing(!editing)}><Pencil size={16} /> 정보 수정</button>
         </div>
       </section>
-
       {editing && <ProfileEditor user={user} saveProfile={saveProfile} done={() => setEditing(false)} />}
       {changingPw && <PasswordEditor changePassword={changePassword} done={() => setChangingPw(false)} />}
+      {requestingPw && <PwRequestPanel requests={myRequests} submitPwRequest={submitPwRequest} />}
     </div>
   );
 }
@@ -732,11 +1064,11 @@ function ProfileEditor({ user, saveProfile, done }) {
         <label>
           재적 상태
           <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
-            <option value="active">현역</option>
-            <option value="graduated">졸업생</option>
+            <option value="active">현역 PS1</option>
+            <option value="graduated">졸업생 PS0</option>
           </select>
         </label>
-        <ClubPicker selected={form.clubs} toggle={toggleClub} />
+        <ClubPicker selected={form.clubs} toggle={toggleClub} imageMode />
         <div className="actions">
           <button type="button" onClick={done}>취소</button>
           <button className="primary" disabled={saving} type="submit"><Save size={16} /> 저장하기</button>
@@ -749,7 +1081,6 @@ function ProfileEditor({ user, saveProfile, done }) {
 function PasswordEditor({ changePassword, done }) {
   const [form, setForm] = useState({ oldPassword: "", newPassword: "", confirmPassword: "" });
   const [error, setError] = useState("");
-
   async function submit(event) {
     event.preventDefault();
     setError("");
@@ -760,15 +1091,14 @@ function PasswordEditor({ changePassword, done }) {
       setError(err.message || "변경에 실패했습니다.");
     }
   }
-
   return (
     <section className="panel accent">
       <h2><KeyRound size={19} /> 비밀번호 변경</h2>
       {error && <div className="alert error">{error}</div>}
       <form className="form" onSubmit={submit}>
-        <input type="password" maxLength={8} placeholder="현재 비밀번호" value={form.oldPassword} onChange={(event) => setForm({ ...form, oldPassword: event.target.value.replace(/\D/g, "") })} />
+        <input type="password" maxLength={8} placeholder="현재 비밀번호 8자리" value={form.oldPassword} onChange={(event) => setForm({ ...form, oldPassword: event.target.value.replace(/\D/g, "") })} />
         <div className="two">
-          <input type="password" maxLength={8} placeholder="새 비밀번호" value={form.newPassword} onChange={(event) => setForm({ ...form, newPassword: event.target.value.replace(/\D/g, "") })} />
+          <input type="password" maxLength={8} placeholder="새 비밀번호 8자리" value={form.newPassword} onChange={(event) => setForm({ ...form, newPassword: event.target.value.replace(/\D/g, "") })} />
           <input type="password" maxLength={8} placeholder="새 비밀번호 확인" value={form.confirmPassword} onChange={(event) => setForm({ ...form, confirmPassword: event.target.value.replace(/\D/g, "") })} />
         </div>
         <div className="actions">
@@ -780,25 +1110,256 @@ function PasswordEditor({ changePassword, done }) {
   );
 }
 
-function AdminPage({ data, deleteRecord, refresh }) {
+function PwRequestPanel({ requests, submitPwRequest }) {
+  const [msg, setMsg] = useState("");
+  return (
+    <section className="panel accent">
+      <h2><KeyRound size={19} /> 비밀번호 찾기 요청</h2>
+      <form className="form" onSubmit={(event) => { event.preventDefault(); submitPwRequest(msg); setMsg(""); }}>
+        <textarea value={msg} onChange={(event) => setMsg(event.target.value)} placeholder="관리자에게 전달할 메시지" />
+        <button className="primary" type="submit">요청 보내기</button>
+      </form>
+      <div className="cards">
+        {requests.map((req) => (
+          <article className="post" key={req.id}>
+            <strong>{req.status === "pending" ? "처리 대기 중" : "답변 완료"}</strong>
+            {req.adminReply && <p>{req.adminReply}</p>}
+            <small>{formatDate(req.createdAt)}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, forceWithdraw, refresh }) {
+  const pendingPwCount = data.pwRequests.filter((req) => req.status === "pending").length;
   return (
     <div className="stack">
       <section className="toolbar">
         <h1>관리자 패널</h1>
         <button type="button" onClick={refresh}><RefreshCw size={16} /> 새로고침</button>
       </section>
-      <section className="panel">
-        <h2><Users size={19} /> 회원</h2>
-        <MemberTable members={data.members} />
-      </section>
-      <section className="panel">
-        <h2>게시글 관리</h2>
-        <PostList posts={data.posts} isAdmin deletePost={(post) => deleteRecord("posts", post)} />
-      </section>
-      <section className="panel">
-        <h2>홍보글 관리</h2>
-        <PostList posts={data.promos} isAdmin deletePost={(post) => deleteRecord("promos", post)} isPromo />
-      </section>
+      <div className="tabs">
+        <button className={tab === "members" ? "active" : ""} type="button" onClick={() => setTab("members")}>회원</button>
+        <button className={tab === "pw" ? "active" : ""} type="button" onClick={() => setTab("pw")}>비번요청 {pendingPwCount || ""}</button>
+        <button className={tab === "resources" ? "active" : ""} type="button" onClick={() => setTab("resources")}>자료</button>
+        <button className={tab === "posts" ? "active" : ""} type="button" onClick={() => setTab("posts")}>게시판</button>
+        <button className={tab === "stats" ? "active" : ""} type="button" onClick={() => setTab("stats")}>통계</button>
+        <button className={tab === "withdrawals" ? "active" : ""} type="button" onClick={() => setTab("withdrawals")}>탈퇴이력</button>
+      </div>
+      {tab === "members" && <AdminMembers members={data.members} forceWithdraw={forceWithdraw} />}
+      {tab === "pw" && <AdminPwRequests requests={data.pwRequests} members={data.members} replyPwRequest={replyPwRequest} />}
+      {tab === "resources" && <AdminResources resources={data.resources} addResource={addResource} deleteResource={(item) => deleteRecord("resources", item)} />}
+      {tab === "posts" && (
+        <>
+          <section className="panel">
+            <h2>게시글 관리</h2>
+            <PostList posts={data.posts} isAdmin deletePost={(post) => deleteRecord("posts", post)} />
+          </section>
+          <section className="panel">
+            <h2>홍보글 관리</h2>
+            <PostList posts={data.promos} isAdmin deletePost={(post) => deleteRecord("promos", post)} isPromo />
+          </section>
+        </>
+      )}
+      {tab === "stats" && <CompareStats stats={stats} />}
+      {tab === "withdrawals" && <Withdrawals items={data.withdrawals} />}
+    </div>
+  );
+}
+
+function AdminMembers({ members, forceWithdraw }) {
+  return (
+    <section className="panel">
+      <h2><Users size={19} /> 회원 관리</h2>
+      <div className="cards">
+        {members.map((member) => <ForceWithdrawRow key={member.id} member={member} forceWithdraw={forceWithdraw} />)}
+      </div>
+    </section>
+  );
+}
+
+function ForceWithdrawRow({ member, forceWithdraw }) {
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  return (
+    <article className="admin-row">
+      <div>
+        <strong>{memberLabel(member)} {psMark(member.status)}</strong>
+        <div className="badges">{(member.clubs || []).map((clubId) => <ClubBadge key={clubId} clubId={clubId} />)}</div>
+      </div>
+      <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="탈퇴 사유" />
+      <button
+        type="button"
+        onClick={async () => {
+          setError("");
+          try {
+            await forceWithdraw(member, reason);
+          } catch (err) {
+            setError(err.message);
+          }
+        }}
+      >
+        강제 탈퇴
+      </button>
+      {error && <small className="danger">{error}</small>}
+    </article>
+  );
+}
+
+function AdminPwRequests({ requests, members, replyPwRequest }) {
+  if (requests.length === 0) return <section className="panel"><p className="empty">비밀번호 요청이 없습니다.</p></section>;
+  return (
+    <section className="panel">
+      <h2><KeyRound size={19} /> 비밀번호 요청</h2>
+      <div className="cards">
+        {requests.map((req) => {
+          const member = members.find((m) => m.id === req.memberId);
+          return <PwReplyRow key={req.id} req={req} member={member} replyPwRequest={replyPwRequest} />;
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PwReplyRow({ req, member, replyPwRequest }) {
+  const [reply, setReply] = useState(member?.password ? `현재 비밀번호는 ${member.password} 입니다.` : "");
+  return (
+    <article className="post">
+      <strong>{req.memberName} ({req.studentYear}) · {req.status === "pending" ? "대기" : "완료"}</strong>
+      {req.message && <p>요청 메시지: {req.message}</p>}
+      <p>실제 비밀번호: <strong>{member?.password || "탈퇴/미확인 회원"}</strong></p>
+      {req.status === "pending" ? (
+        <div className="inline-form">
+          <input value={reply} onChange={(event) => setReply(event.target.value)} placeholder="학생에게 전달할 답변" />
+          <button className="primary" type="button" onClick={() => replyPwRequest(req, reply)}>답변 보내기</button>
+        </div>
+      ) : (
+        <p>답변: {req.adminReply}</p>
+      )}
+    </article>
+  );
+}
+
+function AdminResources({ resources, addResource, deleteResource }) {
+  const [form, setForm] = useState({ clubId: "hora", type: "문서", title: "", note: "", imageUrl: "" });
+  async function onFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const imageUrl = await readFileAsDataUrl(file);
+    setForm((current) => ({ ...current, type: "사진", imageUrl }));
+  }
+  return (
+    <section className="panel">
+      <h2><ImageIcon size={19} /> 자료 관리</h2>
+      <form className="form" onSubmit={(event) => { event.preventDefault(); addResource(form); setForm({ ...form, title: "", note: "", imageUrl: "" }); }}>
+        <div className="two">
+          <select value={form.clubId} onChange={(event) => setForm({ ...form, clubId: event.target.value })}>
+            {CLUB_LIST.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}
+          </select>
+          <select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value })}>
+            <option>문서</option>
+            <option>사진</option>
+            <option>링크</option>
+            <option>기타</option>
+          </select>
+        </div>
+        <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="자료 제목" />
+        <input value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} placeholder="메모 또는 링크" />
+        <input type="file" accept="image/*" onChange={onFile} />
+        <button className="primary" type="submit"><Plus size={17} /> 자료 넣기</button>
+      </form>
+      <div className="resource-grid">
+        {resources.map((item) => (
+          <article className="resource-card" key={item.id}>
+            {item.imageUrl ? <img src={item.imageUrl} alt={item.title} /> : <div className="resource-placeholder">{item.type}</div>}
+            <ClubBadge clubId={item.clubId} />
+            <strong>{item.title}</strong>
+            <p>{item.note}</p>
+            <button type="button" onClick={() => deleteResource(item)}><Trash2 size={15} /> 지우기</button>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Withdrawals({ items }) {
+  return (
+    <section className="panel">
+      <h2>강제 탈퇴 이력</h2>
+      <div className="cards">
+        {items.length === 0 ? <p className="empty">탈퇴 이력이 없습니다.</p> : items.map((item) => (
+          <article className="post" key={item.id}>
+            <strong>{item.memberName} ({String(item.studentYear).slice(2)})</strong>
+            <p>사유: {item.reason}</p>
+            <small>{formatDate(item.withdrawnAt)}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ClubImageGrid({ onClick, counts = [], selectedId = "", compact = false }) {
+  return (
+    <div className={compact ? "club-grid compact" : "club-grid"}>
+      {CLUB_LIST.map((club) => (
+        <button
+          key={club.id}
+          type="button"
+          className={selectedId === club.id ? "club-image-card selected" : "club-image-card"}
+          style={{ "--club": club.color, "--club-bg": club.bg }}
+          onClick={() => onClick?.(club.id)}
+        >
+          <img src={club.image} alt={club.name} />
+          <strong>{club.name}</strong>
+          <span>{club.english}{Array.isArray(counts) && counts.length ? ` · ${counts.filter((m) => m.clubs?.includes(club.id)).length}명` : ""}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ClubPicker({ selected, toggle, imageMode = false }) {
+  if (imageMode) {
+    return (
+      <div className="club-picker">
+        <span>소속 동아리</span>
+        <div className="club-grid compact">
+          {CLUB_LIST.map((club) => (
+            <button
+              key={club.id}
+              type="button"
+              className={selected.includes(club.id) ? "club-image-card selected" : "club-image-card"}
+              style={{ "--club": club.color, "--club-bg": club.bg }}
+              onClick={() => toggle(club.id)}
+            >
+              <img src={club.image} alt={club.name} />
+              <strong>{club.name}</strong>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="club-picker">
+      <span>소속 동아리</span>
+      <div>
+        {CLUB_LIST.map((club) => (
+          <button
+            key={club.id}
+            type="button"
+            className={selected.includes(club.id) ? "selected" : ""}
+            style={{ "--club": club.color, "--club-bg": club.bg }}
+            onClick={() => toggle(club.id)}
+          >
+            {club.name}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -809,9 +1370,13 @@ function PostList({ posts, isAdmin, currentUser, deletePost, isPromo = false }) 
     <div className="cards">
       {posts.map((post) => (
         <article className="post" key={post.id}>
-          <ClubBadge clubId={post.clubId} />
+          <div className="post-head">
+            <ClubBadge clubId={post.clubId} />
+            {post.isGlobal && <span className="global-badge">전체공지</span>}
+            {post.isAnon && <span className="secret-badge">익명</span>}
+          </div>
           {isPromo && <h3>{post.title}</h3>}
-          <p>{isPromo ? post.content : post.content}</p>
+          <p>{post.content}</p>
           <footer>
             <span>{post.authorName} · {formatDate(post.createdAt)}</span>
             {(isAdmin || currentUser?.id === post.authorId) && (
@@ -841,36 +1406,15 @@ function MemberTable({ members }) {
         <tbody>
           {members.map((member) => (
             <tr key={member.id}>
-              <td>{member.name}</td>
+              <td><strong>{memberLabel(member)}</strong> {psMark(member.status)}</td>
               <td>{member.studentYear}</td>
               <td>{genderLabel(member.gender)}</td>
-              <td>{member.status === "graduated" ? "졸업생" : "현역"}</td>
+              <td>{statusLabel(member.status)}</td>
               <td><div className="badges">{(member.clubs || []).map((clubId) => <ClubBadge key={clubId} clubId={clubId} />)}</div></td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-function ClubPicker({ selected, toggle }) {
-  return (
-    <div className="club-picker">
-      <span>소속 동아리</span>
-      <div>
-        {CLUB_LIST.map((club) => (
-          <button
-            key={club.id}
-            type="button"
-            className={selected.includes(club.id) ? "selected" : ""}
-            style={{ "--club": club.color, "--club-bg": club.bg }}
-            onClick={() => toggle(club.id)}
-          >
-            {club.name}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
@@ -904,26 +1448,42 @@ function Info({ label, value }) {
 
 function ClubBadge({ clubId }) {
   const club = CLUBS[clubId] || { name: clubId, color: "#777", bg: "#eee" };
+  return <span className="badge" style={{ "--club": club.color, "--club-bg": club.bg }}>{club.name}</span>;
+}
+
+function Bar({ label, value, max, color, suffix }) {
+  const width = max ? Math.min(100, Math.round((value / max) * 100)) : 0;
   return (
-    <span className="badge" style={{ "--club": club.color, "--club-bg": club.bg }}>
-      {club.name}
-    </span>
+    <div className="bar-row">
+      <div><span>{label}</span><strong>{value}{suffix}</strong></div>
+      <div className="bar"><span style={{ width: `${width}%`, background: color }} /></div>
+    </div>
   );
 }
 
 async function fetchRemoteData() {
-  const [members, posts, promos, attendance] = await Promise.all([
+  const [members, posts, promos, schedules, events, attendance, resources, pwRequests, withdrawals] = await Promise.all([
     fbGet("members"),
     fbGet("posts"),
     fbGet("promos"),
+    fbGet("schedules"),
+    fbGet("events"),
     fbGet("attendance"),
+    fbGet("resources"),
+    fbGet("pwRequests"),
+    fbGet("withdrawals"),
   ]);
 
   return {
     members: normalizeMembers(toArray(members)),
     posts: toArray(posts).sort(sortNewest),
     promos: toArray(promos).sort(sortNewest),
+    schedules: toArray(schedules).sort(sortNewest),
+    events: toArray(events).sort(sortNewest),
     attendance: toArray(attendance, "key"),
+    resources: toArray(resources).sort(sortNewest),
+    pwRequests: toArray(pwRequests).sort(sortNewest),
+    withdrawals: toArray(withdrawals).sort(sortNewest),
   };
 }
 
@@ -1010,10 +1570,16 @@ async function fbDelete(path) {
 
 function readLocalData() {
   return {
+    ...EMPTY_DATA,
     members: readStorage(STORAGE.members, []),
     posts: readStorage(STORAGE.posts, []),
     promos: readStorage(STORAGE.promos, []),
+    schedules: readStorage(STORAGE.schedules, []),
+    events: readStorage(STORAGE.events, []),
     attendance: readStorage(STORAGE.attendance, []),
+    resources: readStorage(STORAGE.resources, []),
+    pwRequests: readStorage(STORAGE.pwRequests, []),
+    withdrawals: readStorage(STORAGE.withdrawals, []),
   };
 }
 
@@ -1021,7 +1587,12 @@ function saveLocalData(data) {
   writeStorage(STORAGE.members, data.members);
   writeStorage(STORAGE.posts, data.posts);
   writeStorage(STORAGE.promos, data.promos);
+  writeStorage(STORAGE.schedules, data.schedules);
+  writeStorage(STORAGE.events, data.events);
   writeStorage(STORAGE.attendance, data.attendance);
+  writeStorage(STORAGE.resources, data.resources);
+  writeStorage(STORAGE.pwRequests, data.pwRequests);
+  writeStorage(STORAGE.withdrawals, data.withdrawals);
 }
 
 function readStorage(key, fallback) {
@@ -1046,11 +1617,7 @@ function toArray(value, idField = "id") {
   if (Array.isArray(value)) return value.filter(Boolean);
   return Object.entries(value)
     .filter(([, item]) => item && typeof item === "object")
-    .map(([key, item]) => ({
-      ...item,
-      [idField]: item[idField] || key,
-      _fbKey: key,
-    }));
+    .map(([key, item]) => ({ ...item, [idField]: item[idField] || key, _fbKey: key }));
 }
 
 function cleanFirebase(value) {
@@ -1068,19 +1635,64 @@ function upsertById(items, item) {
   return exists ? items.map((entry) => (entry.id === item.id ? item : entry)) : [item, ...items];
 }
 
+function upsertByKey(items, item, keyField) {
+  const exists = items.some((entry) => entry[keyField] === item[keyField]);
+  return exists ? items.map((entry) => (entry[keyField] === item[keyField] ? item : entry)) : [item, ...items];
+}
+
 function firebaseKey(value) {
   return String(value).replace(/[.$#[\]/]/g, "_");
 }
 
 function firebaseRecordKey(record, fallback) {
-  return firebaseKey(record?._fbKey || record?.id || fallback);
+  return firebaseKey(record?._fbKey || record?.id || record?.key || fallback);
+}
+
+function buildStats(data) {
+  return CLUB_LIST.map((club) => {
+    const members = data.members.filter((member) => member.clubs?.includes(club.id));
+    const attendance = data.attendance.filter((item) => item.clubId === club.id);
+    const present = attendance.filter((item) => item.status === "present").length;
+    return {
+      club,
+      members: members.length,
+      active: members.filter((member) => member.status !== "graduated").length,
+      graduated: members.filter((member) => member.status === "graduated").length,
+      posts: data.posts.filter((post) => post.clubId === club.id).length,
+      promos: data.promos.filter((promo) => promo.clubId === club.id).length,
+      resources: data.resources.filter((item) => item.clubId === club.id).length,
+      attendanceRate: attendance.length ? Math.round((present / attendance.length) * 100) : 0,
+    };
+  });
+}
+
+function memberLabel(member) {
+  return `${member.name}(${String(member.studentYear || "").slice(2)})`;
+}
+
+function psMark(status) {
+  const graduated = status === "graduated";
+  return <span className={graduated ? "ps-mark ps0" : "ps-mark ps1"}>{graduated ? "PS0" : "PS1"}</span>;
+}
+
+function statusLabel(status) {
+  return status === "graduated" ? "졸업생" : "현역";
+}
+
+function genderLabel(value) {
+  if (value === "male") return "남성";
+  if (value === "female") return "여성";
+  return "기타";
 }
 
 function recordTime(record) {
   return (
     Date.parse(record?.updatedAt || "") ||
     Date.parse(record?.createdAt || "") ||
+    Date.parse(record?.repliedAt || "") ||
+    Date.parse(record?.withdrawnAt || "") ||
     Date.parse(record?.joinedAt || "") ||
+    Date.parse(record?.date || "") ||
     0
   );
 }
@@ -1104,13 +1716,16 @@ function formatDate(value) {
   return date.toLocaleDateString("ko-KR", { year: "numeric", month: "short", day: "numeric" });
 }
 
-function genderLabel(value) {
-  if (value === "male") return "남성";
-  if (value === "female") return "여성";
-  return "기타";
-}
-
 function isEditingField() {
   const active = document.activeElement;
   return active && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName);
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
