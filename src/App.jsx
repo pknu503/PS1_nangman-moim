@@ -159,7 +159,12 @@ export default function App() {
     () => getVisibleMessages(data.messages || [], sessionUser, isAdmin),
     [data.messages, isAdmin, sessionUser],
   );
+  const adminMessages = useMemo(
+    () => (data.messages || []).filter((item) => item.recipientId === "admin").sort(sortNewest),
+    [data.messages],
+  );
   const unreadMessageCount = isAdmin ? 0 : visibleMessages.filter((item) => !isMessageRead(data.messageReads || [], sessionUser?.id, item.id)).length;
+  const unreadAdminMessageCount = isAdmin ? adminMessages.filter((item) => !isMessageRead(data.messageReads || [], "admin", item.id)).length : 0;
   const pendingPwCount = data.pwRequests.filter((req) => req.status === "pending").length;
   const pendingSignupCount = data.signupRequests.filter((req) => req.approvalStatus === "pending").length;
 
@@ -517,6 +522,26 @@ export default function App() {
     await fbPatch("messageReads", Object.fromEntries(reads.map((item) => [firebaseKey(item.key), cleanFirebase(item)])));
   }
 
+  async function markAdminMessagesRead(messages) {
+    if (!isAdmin || messages.length === 0) return;
+    const unread = messages.filter((item) => !isMessageRead(data.messageReads || [], "admin", item.id));
+    if (unread.length === 0) return;
+    const reads = unread.map((item) => ({
+      key: `admin_${item.id}`,
+      memberId: "admin",
+      messageId: item.id,
+      readAt: now(),
+    }));
+    setData((current) => ({
+      ...current,
+      messageReads: reads.reduce(
+        (list, item) => upsertByKey(list, item, "key"),
+        current.messageReads || [],
+      ),
+    }));
+    await fbPatch("messageReads", Object.fromEntries(reads.map((item) => [firebaseKey(item.key), cleanFirebase(item)])));
+  }
+
   async function submitPwRequest(msg) {
     const exists = data.pwRequests.find(
       (req) => req.memberId === sessionUser.id && req.status === "pending",
@@ -717,6 +742,7 @@ export default function App() {
           <NavButton id="home" page={page} setPage={setPage} icon={Home} label="홈" />
           <NavButton id="integrated" page={page} setPage={setPage} icon={BarChart3} label="통합현황" />
           <NavButton id="club" page={page} setPage={setPage} icon={Users} label="동아리" />
+          {isAdmin && <NavButton id="adminMessages" page={page} setPage={setPage} icon={Mail} label={`쪽지${unreadAdminMessageCount ? ` ${unreadAdminMessageCount}` : ""}`} highlight={unreadAdminMessageCount > 0} />}
           {isAdmin && <NavButton id="admin" page={page} setPage={setPage} icon={ShieldCheck} label={`관리자${pendingPwCount + pendingSignupCount ? ` ${pendingPwCount + pendingSignupCount}` : ""}`} />}
           {!isAdmin && <NavButton id="profile" page={page} setPage={setPage} icon={User} label="내 정보" />}
           {!isAdmin && <NavButton id="messages" page={page} setPage={setPage} icon={Mail} label={`쪽지함${unreadMessageCount ? ` ${unreadMessageCount}` : ""}`} highlight={unreadMessageCount > 0} />}
@@ -798,6 +824,16 @@ export default function App() {
           markMessagesRead={markMessagesRead}
         />
       )}
+      {page === "adminMessages" && isAdmin && (
+        <AdminMessages
+          members={data.members}
+          messages={data.messages}
+          messageReads={data.messageReads || []}
+          sendMessage={sendMessage}
+          markAdminMessagesRead={markAdminMessagesRead}
+          deleteMessage={(item) => deleteRecord("messages", item)}
+        />
+      )}
       {page === "admin" && isAdmin && (
         <AdminPage
           data={data}
@@ -811,7 +847,6 @@ export default function App() {
           rejectSignupRequest={rejectSignupRequest}
           restoreSignupRequest={restoreSignupRequest}
           updateRecord={updateRecord}
-          sendMessage={sendMessage}
           forceWithdraw={forceWithdraw}
           refresh={() => refreshData()}
         />
@@ -1910,7 +1945,7 @@ function PwRequestPanel({ requests, submitPwRequest }) {
   );
 }
 
-function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, approveSignupRequest, rejectSignupRequest, restoreSignupRequest, updateRecord, sendMessage, forceWithdraw, refresh }) {
+function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, approveSignupRequest, rejectSignupRequest, restoreSignupRequest, updateRecord, forceWithdraw, refresh }) {
   const pendingPwCount = data.pwRequests.filter((req) => req.status === "pending").length;
   const pendingSignupCount = data.signupRequests.filter((req) => req.approvalStatus === "pending").length;
   return (
@@ -1923,7 +1958,6 @@ function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyP
         <button className={tab === "members" ? "active" : ""} type="button" onClick={() => setTab("members")}>회원</button>
         <button className={tab === "signup" ? "active" : ""} type="button" onClick={() => setTab("signup")}>가입신청 {pendingSignupCount || ""}</button>
         <button className={tab === "pw" ? "active" : ""} type="button" onClick={() => setTab("pw")}>비번요청 {pendingPwCount || ""}</button>
-        <button className={tab === "messages" ? "active" : ""} type="button" onClick={() => setTab("messages")}>쪽지</button>
         <button className={tab === "resources" ? "active" : ""} type="button" onClick={() => setTab("resources")}>자료</button>
         <button className={tab === "posts" ? "active" : ""} type="button" onClick={() => setTab("posts")}>게시판</button>
         <button className={tab === "stats" ? "active" : ""} type="button" onClick={() => setTab("stats")}>통계</button>
@@ -1932,7 +1966,6 @@ function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyP
       {tab === "members" && <AdminMembers members={data.members} forceWithdraw={forceWithdraw} />}
       {tab === "signup" && <AdminSignupRequests requests={data.signupRequests} approveSignupRequest={approveSignupRequest} rejectSignupRequest={rejectSignupRequest} restoreSignupRequest={restoreSignupRequest} />}
       {tab === "pw" && <AdminPwRequests requests={data.pwRequests} members={data.members} replyPwRequest={replyPwRequest} />}
-      {tab === "messages" && <AdminMessages members={data.members} messages={data.messages} sendMessage={sendMessage} deleteMessage={(item) => deleteRecord("messages", item)} />}
       {tab === "resources" && <AdminResources resources={data.resources} addResource={addResource} deleteResource={(item) => deleteRecord("resources", item)} />}
       {tab === "posts" && (
         <>
@@ -2143,11 +2176,15 @@ function PwReplyRow({ req, member, replyPwRequest }) {
   );
 }
 
-function AdminMessages({ members, messages = [], sendMessage, deleteMessage }) {
+function AdminMessages({ members, messages = [], messageReads = [], sendMessage, markAdminMessagesRead, deleteMessage }) {
   const [form, setForm] = useState({ recipientId: "all", title: "", content: "" });
   const [error, setError] = useState("");
   const incoming = messages.filter((message) => message.recipientId === "admin").sort(sortNewest);
   const sent = messages.filter((message) => message.senderId === "admin").sort(sortNewest);
+
+  useEffect(() => {
+    markAdminMessagesRead?.(incoming).catch(console.warn);
+  }, [messages]);
 
   async function submit(event) {
     event.preventDefault();
@@ -2182,10 +2219,13 @@ function AdminMessages({ members, messages = [], sendMessage, deleteMessage }) {
         <div className="cards">
           {incoming.length === 0 ? (
             <p className="empty">학생이 보낸 쪽지가 없습니다.</p>
-          ) : incoming.map((message) => (
-            <article className="post" key={message.id}>
+          ) : incoming.map((message) => {
+            const unread = !isMessageRead(messageReads, "admin", message.id);
+            return (
+            <article className={unread ? "post unread-message" : "post"} key={message.id}>
               <div className="post-head">
                 <span className="global-badge">학생</span>
+                {unread && <span className="secret-badge">새 쪽지</span>}
                 <strong>{message.title}</strong>
               </div>
               <p>{message.content}</p>
@@ -2194,7 +2234,8 @@ function AdminMessages({ members, messages = [], sendMessage, deleteMessage }) {
                 <button type="button" onClick={() => deleteMessage(message)}><Trash2 size={15} /> 삭제</button>
               </footer>
             </article>
-          ))}
+            );
+          })}
         </div>
       </section>
       <div className="cards message-history">
