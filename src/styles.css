@@ -983,6 +983,25 @@ label.inline {
   margin-bottom: 0;
 }
 
+.line-memo-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.line-memo-form span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.line-memo-card p {
+  font-size: 17px;
+  font-weight: 900;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1128,6 +1147,10 @@ th {
   }
 
   .schedule-form {
+    grid-template-columns: 1fr;
+  }
+
+  .line-memo-form {
     grid-template-columns: 1fr;
   }
 

@@ -433,6 +433,8 @@ export default function App() {
       date: form.date,
       kind: form.kind || "",
       description: form.description.trim(),
+      authorId: sessionUser?.id || "",
+      authorName: sessionUser?.name || "관리자",
       createdAt: now(),
     };
     setData((current) => ({ ...current, [collection]: [item, ...current[collection]] }));
@@ -1419,7 +1421,7 @@ function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub,
             <button className={tab === "monthly" ? "active" : ""} type="button" onClick={() => setTab("monthly")}>월별 일정</button>
             <button className={tab === "outputs" ? "active" : ""} type="button" onClick={() => setTab("outputs")}>동아리 성과</button>
             <button className={tab === "event" ? "active" : ""} type="button" onClick={() => setTab("event")}>주별 이벤트</button>
-            <button className={tab === "other" ? "active" : ""} type="button" onClick={() => setTab("other")}>기타</button>
+            <button className={tab === "lineMemo" ? "active" : ""} type="button" onClick={() => setTab("lineMemo")}>한줄 문구</button>
             <button className={tab === "attendance" ? "active" : ""} type="button" onClick={() => setTab("attendance")}>출석</button>
             <button className={tab === "members" ? "active" : ""} type="button" onClick={() => setTab("members")}>회원</button>
           </div>
@@ -1433,7 +1435,7 @@ function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub,
           {tab === "monthly" && <MonthlyCalendarPanel items={data.schedules.filter((item) => item.clubId === selectedClubId && item.kind === "monthly")} canManage={isMember} addSchedule={addSchedule} updateSchedule={updateSchedule} deleteSchedule={deleteSchedule} />}
           {tab === "outputs" && <OutputPanel outputs={outputs} canManage={isMember} addOutput={addOutput} updateOutput={updateOutput} deleteOutput={deleteOutput} />}
           {tab === "event" && <SchedulePanel title="주별 이벤트" collection="events" kind="event" items={data.events.filter((item) => item.clubId === selectedClubId)} isAdmin={isAdmin} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
-          {tab === "other" && <SchedulePanel title="기타" collection="schedules" kind="other" items={data.schedules.filter((item) => item.clubId === selectedClubId && item.kind === "other")} isAdmin={isAdmin} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
+          {tab === "lineMemo" && <LineMemoPanel items={data.schedules.filter((item) => item.clubId === selectedClubId && item.kind === "lineMemo")} user={user} isAdmin={isAdmin} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
           {tab === "attendance" && <AttendancePanel data={data} members={members} user={user} isAdmin={isAdmin} clubId={selectedClubId} markAttendance={markAttendance} />}
           {tab === "members" && (
             <section className="panel">
@@ -1636,6 +1638,63 @@ function ScheduleItem({ item, canManage, updateSchedule, deleteSchedule }) {
         </>
       )}
     </article>
+  );
+}
+
+function LineMemoPanel({ items, user, isAdmin, addSchedule, deleteSchedule }) {
+  const [text, setText] = useState("");
+  const sorted = [...items].sort(sortNewest);
+  const trimmed = text.trim();
+
+  function updateText(value) {
+    setText(value.slice(0, 50));
+  }
+
+  return (
+    <section className="panel">
+      <h2><Pencil size={19} /> 한줄 문구</h2>
+      <form
+        className="line-memo-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!trimmed) return;
+          addSchedule("schedules", {
+            title: trimmed.slice(0, 50),
+            date: todayKey(),
+            kind: "lineMemo",
+            description: "",
+          });
+          setText("");
+        }}
+      >
+        <input
+          maxLength={50}
+          value={text}
+          onChange={(event) => updateText(event.target.value)}
+          placeholder="한 줄 문구를 남겨보세요."
+        />
+        <span>{text.length}/50</span>
+        <button className="primary" type="submit"><Plus size={17} /> 등록</button>
+      </form>
+      <div className="cards">
+        {sorted.length === 0 ? (
+          <p className="empty">등록된 한줄 문구가 없습니다.</p>
+        ) : sorted.map((item) => {
+          const canDelete = isAdmin || item.authorId === user?.id;
+          return (
+            <article className="post line-memo-card" key={item.id}>
+              <p>{item.title}</p>
+              <footer>
+                <span>{item.authorName || "익명"} · {formatDate(item.createdAt || item.date)}</span>
+                {canDelete && (
+                  <button type="button" onClick={() => deleteSchedule("schedules", item)}><Trash2 size={15} /> 삭제</button>
+                )}
+              </footer>
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
