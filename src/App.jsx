@@ -2,19 +2,28 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
+  Download,
+  Eye,
+  EyeOff,
   FileText,
   Home,
   Image as ImageIcon,
   KeyRound,
   LogOut,
+  Mail,
   Megaphone,
+  Paperclip,
   Pencil,
   Plus,
   RefreshCw,
   Save,
+  Send,
   ShieldCheck,
   Trash2,
+  Trophy,
   User,
   Users,
 } from "lucide-react";
@@ -33,7 +42,9 @@ const STORAGE = {
   schedules: "nm_schedules",
   events: "nm_events",
   attendance: "nm_attend",
+  outputs: "nm_outputs",
   resources: "nm_resources",
+  messages: "nm_messages",
   pwRequests: "nm_pwreq",
   signupRequests: "nm_signup_requests",
   withdrawals: "nm_withdrawals",
@@ -48,7 +59,7 @@ const CLUBS = {
     color: "#7d65b3",
     bg: "#f1edf9",
     image: "/assets/hora.jpg",
-    description: "시간을 함께하며 현장과 사람을 배우는 동아리",
+    description: "사람과 함께, 의미 있는 시간을 나누는 HORA",
   },
   myth: {
     id: "myth",
@@ -58,7 +69,7 @@ const CLUBS = {
     color: "#bd6538",
     bg: "#fff0e8",
     image: "/assets/myth.jpg",
-    description: "새로운 이야기를 기획하고 기록하는 동아리",
+    description: "신념을 이야기하고, 아이디어로 세상을 변화시키는 동아리",
   },
   theme: {
     id: "theme",
@@ -68,7 +79,7 @@ const CLUBS = {
     color: "#3f73bc",
     bg: "#eaf1fb",
     image: "/assets/theme.png",
-    description: "주제를 탐구하고 발표하며 성장하는 동아리",
+    description: "틀에 얽매이지 않고 우리만의 THEME를 만들어 가는 동아리",
   },
 };
 
@@ -80,7 +91,9 @@ const EMPTY_DATA = {
   schedules: [],
   events: [],
   attendance: [],
+  outputs: [],
   resources: [],
+  messages: [],
   pwRequests: [],
   signupRequests: [],
   withdrawals: [],
@@ -418,6 +431,46 @@ export default function App() {
     await fbPatch("resources", { [firebaseKey(item.id)]: cleanFirebase(item) });
   }
 
+  async function addOutput(form) {
+    if (!form.title.trim() && !form.content.trim() && !form.fileUrl) return;
+    const item = {
+      id: makeId("output"),
+      clubId: selectedClubId,
+      title: form.title.trim() || "동아리 성과",
+      content: form.content.trim(),
+      fileUrl: form.fileUrl || "",
+      fileName: form.fileName || "",
+      fileType: form.fileType || "",
+      authorId: sessionUser.id,
+      authorName: sessionUser.name,
+      createdAt: now(),
+    };
+    setData((current) => ({ ...current, outputs: [item, ...current.outputs] }));
+    await fbPatch("outputs", { [firebaseKey(item.id)]: cleanFirebase(item) });
+  }
+
+  async function sendMessage(form) {
+    if (!form.content.trim()) return;
+    const recipient = form.recipientId === "all"
+      ? null
+      : data.members.find((member) => member.id === form.recipientId);
+    if (form.recipientId !== "all" && !recipient) throw new Error("쪽지를 받을 회원을 선택해주세요.");
+    const item = {
+      id: makeId("message"),
+      recipientId: form.recipientId,
+      recipientName: recipient ? memberLabel(recipient) : "전체 회원",
+      scope: form.recipientId === "all" ? "all" : "member",
+      title: form.title.trim() || "관리자 쪽지",
+      content: form.content.trim(),
+      senderId: "admin",
+      senderName: "관리자",
+      createdAt: now(),
+    };
+    setData((current) => ({ ...current, messages: [item, ...current.messages] }));
+    await fbPatch("messages", { [firebaseKey(item.id)]: cleanFirebase(item) });
+    setMessage("쪽지를 보냈습니다.");
+  }
+
   async function submitPwRequest(msg) {
     const exists = data.pwRequests.find(
       (req) => req.memberId === sessionUser.id && req.status === "pending",
@@ -500,6 +553,22 @@ export default function App() {
     setMessage(`${req.name}님의 가입 신청을 거부했습니다.`);
   }
 
+  async function restoreSignupRequest(req) {
+    const restored = {
+      ...req,
+      approvalStatus: "pending",
+      rejectReason: "",
+      reviewedAt: "",
+      updatedAt: now(),
+    };
+    await fbPatch("signupRequests", { [firebaseRecordKey(req, req.id)]: cleanFirebase(restored) });
+    setData((current) => ({
+      ...current,
+      signupRequests: upsertById(current.signupRequests, restored),
+    }));
+    setMessage(`${req.name}님의 가입 거부를 취소했습니다.`);
+  }
+
   async function forceWithdraw(member, reason) {
     if (!reason.trim()) throw new Error("탈퇴 사유를 입력해주세요.");
     const item = {
@@ -568,7 +637,7 @@ export default function App() {
     <main className="app">
       <header className="topbar">
         <button className="brand" type="button" onClick={() => setPage("home")}>
-          <span>낭</span>
+          <span>PS1</span>
           <strong>낭만모임</strong>
         </button>
         <nav>
@@ -627,7 +696,11 @@ export default function App() {
           deletePromo={(promo) => deleteRecord("promos", promo)}
           updatePromo={(promo, changes) => updateRecord("promos", promo, changes)}
           addSchedule={addSchedule}
+          updateSchedule={(collection, record, changes) => updateRecord(collection, record, changes)}
           deleteSchedule={(collection, record) => deleteRecord(collection, record)}
+          addOutput={addOutput}
+          updateOutput={(output, changes) => updateRecord("outputs", output, changes)}
+          deleteOutput={(output) => deleteRecord("outputs", output)}
           markAttendance={markAttendance}
         />
       )}
@@ -651,7 +724,9 @@ export default function App() {
           replyPwRequest={replyPwRequest}
           approveSignupRequest={approveSignupRequest}
           rejectSignupRequest={rejectSignupRequest}
+          restoreSignupRequest={restoreSignupRequest}
           updateRecord={updateRecord}
+          sendMessage={sendMessage}
           forceWithdraw={forceWithdraw}
           refresh={() => refreshData()}
         />
@@ -693,16 +768,39 @@ function LoginForm({ login, loading }) {
       </label>
       <label>
         비밀번호
-        <input
-          type="password"
+        <PasswordInput
           maxLength={8}
           value={form.password}
-          onChange={(event) => setForm({ ...form, password: event.target.value.replace(/\D/g, "") })}
+          onChange={(value) => setForm({ ...form, password: value.replace(/\D/g, "") })}
           placeholder="숫자 8자리"
         />
       </label>
       <button className="primary" disabled={loading} type="submit">로그인</button>
     </form>
+  );
+}
+
+function PasswordInput({ value, onChange, placeholder, maxLength = 8 }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="password-field">
+      <input
+        type={visible ? "text" : "password"}
+        inputMode="numeric"
+        maxLength={maxLength}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+      />
+      <button
+        type="button"
+        aria-label={visible ? "비밀번호 숨기기" : "비밀번호 보기"}
+        title={visible ? "비밀번호 숨기기" : "비밀번호 보기"}
+        onClick={() => setVisible((current) => !current)}
+      >
+        {visible ? <EyeOff size={18} /> : <Eye size={18} />}
+      </button>
+    </div>
   );
 }
 
@@ -761,21 +859,19 @@ function RegisterForm({ register, loading }) {
       <div className="two">
         <label>
           비밀번호
-          <input
-            type="password"
+          <PasswordInput
             maxLength={8}
             value={form.password}
-            onChange={(event) => setForm({ ...form, password: event.target.value.replace(/\D/g, "") })}
+            onChange={(value) => setForm({ ...form, password: value.replace(/\D/g, "") })}
             placeholder="숫자 8자리"
           />
         </label>
         <label>
           비밀번호 확인
-          <input
-            type="password"
+          <PasswordInput
             maxLength={8}
             value={form.passwordConfirm}
-            onChange={(event) => setForm({ ...form, passwordConfirm: event.target.value.replace(/\D/g, "") })}
+            onChange={(value) => setForm({ ...form, passwordConfirm: value.replace(/\D/g, "") })}
             placeholder="다시 입력"
           />
         </label>
@@ -793,11 +889,13 @@ function HomePage({ data, isAdmin, user, myClubIds, openClub, addPromo, deletePr
     <div className="stack">
       <section className="hero">
         <div>
-          <p>국립부경대학교 사회복지학과 전공동아리</p>
+          <p>국립부경대학교 사회복지학과(PS1) 전공동아리</p>
           <h1>낭만 있는 사복 이야기</h1>
+        </div>
+        <div className="hero-clubs">
+          <ClubImageGrid onClick={openClub} counts={data.members} />
           <span>동아리 그림을 클릭해서 각 동아리 관리 화면으로 이동하세요.</span>
         </div>
-        <ClubImageGrid onClick={openClub} counts={data.members} />
       </section>
 
       {writableClubs.length > 0 && (
@@ -873,8 +971,10 @@ function OverviewStats({ data, stats }) {
         <Metric label="전체 회원" value={`${data.members.length}명`} />
         <Metric label="게시글" value={`${data.posts.length}개`} />
         <Metric label="홍보글" value={`${data.promos.length}개`} />
+        <Metric label="성과" value={`${(data.outputs || []).length}개`} />
         <Metric label="자료" value={`${data.resources.length}개`} />
       </div>
+      <DashboardGraphs data={data} stats={stats} />
       <section className="panel">
         <h2><BarChart3 size={19} /> 동아리별 지표</h2>
         <div className="chart-grid">
@@ -892,10 +992,79 @@ function OverviewStats({ data, stats }) {
   );
 }
 
+function DashboardGraphs({ data, stats }) {
+  const totals = {
+    posts: data.posts.length,
+    promos: data.promos.length,
+    outputs: (data.outputs || []).length,
+    resources: data.resources.length,
+  };
+  const maxMembers = Math.max(1, ...stats.map((stat) => stat.members));
+  const maxContent = Math.max(1, ...Object.values(totals));
+  return (
+    <section className="panel">
+      <h2><BarChart3 size={19} /> 그래프 요약</h2>
+      <div className="graph-grid">
+        <article className="graph-card">
+          <strong>동아리별 회원 수</strong>
+          <div className="vertical-bars">
+            {stats.map((stat) => (
+              <div className="vertical-bar" key={stat.club.id}>
+                <span style={{ height: `${Math.max(8, Math.round((stat.members / maxMembers) * 100))}%`, background: stat.club.color }} />
+                <small>{stat.members}명</small>
+                <ClubBadge clubId={stat.club.id} />
+              </div>
+            ))}
+          </div>
+        </article>
+        <article className="graph-card">
+          <strong>콘텐츠 등록 현황</strong>
+          <Bar label="게시글" value={totals.posts} max={maxContent} color="#7d65b3" suffix="개" />
+          <Bar label="홍보글" value={totals.promos} max={maxContent} color="#f28b8b" suffix="개" />
+          <Bar label="성과" value={totals.outputs} max={maxContent} color="#bd6538" suffix="개" />
+          <Bar label="자료" value={totals.resources} max={maxContent} color="#3f73bc" suffix="개" />
+        </article>
+        <article className="graph-card">
+          <strong>출석률 다이어그램</strong>
+          <div className="donut-grid">
+            {stats.map((stat) => (
+              <div className="donut-item" key={stat.club.id}>
+                <div
+                  className="donut"
+                  style={{
+                    "--value": `${stat.attendanceRate}%`,
+                    "--club": stat.club.color,
+                  }}
+                >
+                  <span>{stat.attendanceRate}%</span>
+                </div>
+                <ClubBadge clubId={stat.club.id} />
+              </div>
+            ))}
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}
+
 function CompareStats({ stats }) {
+  const max = Math.max(1, ...stats.flatMap((stat) => [stat.members, stat.posts, stat.promos, stat.outputs, stat.resources]));
   return (
     <section className="panel">
       <h2><BarChart3 size={19} /> 동아리별 비교</h2>
+      <div className="compare-bars">
+        {stats.map((stat) => (
+          <article className="chart-card" key={stat.club.id}>
+            <ClubBadge clubId={stat.club.id} />
+            <Bar label="회원" value={stat.members} max={max} color={stat.club.color} suffix="명" />
+            <Bar label="게시글" value={stat.posts} max={max} color="#7d65b3" suffix="개" />
+            <Bar label="홍보글" value={stat.promos} max={max} color="#f28b8b" suffix="개" />
+            <Bar label="성과" value={stat.outputs} max={max} color="#bd6538" suffix="개" />
+            <Bar label="자료" value={stat.resources} max={max} color="#3f73bc" suffix="개" />
+          </article>
+        ))}
+      </div>
       <div className="table-wrap">
         <table>
           <thead>
@@ -906,6 +1075,7 @@ function CompareStats({ stats }) {
               <th>졸업생</th>
               <th>게시글</th>
               <th>홍보글</th>
+              <th>성과</th>
               <th>출석률</th>
               <th>자료</th>
             </tr>
@@ -919,6 +1089,7 @@ function CompareStats({ stats }) {
                 <td>{stat.graduated}</td>
                 <td>{stat.posts}</td>
                 <td>{stat.promos}</td>
+                <td>{stat.outputs}</td>
                 <td>{stat.attendanceRate}%</td>
                 <td>{stat.resources}</td>
               </tr>
@@ -930,11 +1101,12 @@ function CompareStats({ stats }) {
   );
 }
 
-function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub, tab, setTab, addPost, deletePost, updatePost, deletePromo, updatePromo, addSchedule, deleteSchedule, markAttendance }) {
+function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub, tab, setTab, addPost, deletePost, updatePost, deletePromo, updatePromo, addSchedule, updateSchedule, deleteSchedule, addOutput, updateOutput, deleteOutput, markAttendance }) {
   const isMember = isAdmin || user.clubs?.includes(selectedClubId);
   const posts = data.posts.filter((post) => post.clubId === selectedClubId);
   const promos = data.promos.filter((promo) => promo.clubId === selectedClubId);
   const members = data.members.filter((member) => member.clubs?.includes(selectedClubId));
+  const outputs = (data.outputs || []).filter((output) => output.clubId === selectedClubId);
 
   return (
     <div className="stack">
@@ -943,7 +1115,7 @@ function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub,
         <div>
           <p>{selectedClub.english}</p>
           <h1>{selectedClub.name}</h1>
-          <span>{selectedClub.description}</span>
+          <ClubDescription club={selectedClub} />
         </div>
       </section>
       <ClubImageGrid onClick={openClub} selectedId={selectedClubId} compact />
@@ -955,7 +1127,7 @@ function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub,
             <button className={tab === "board" ? "active" : ""} type="button" onClick={() => setTab("board")}>게시판</button>
             <button className={tab === "promo" ? "active" : ""} type="button" onClick={() => setTab("promo")}>홍보</button>
             <button className={tab === "monthly" ? "active" : ""} type="button" onClick={() => setTab("monthly")}>월별 일정</button>
-            <button className={tab === "weekly" ? "active" : ""} type="button" onClick={() => setTab("weekly")}>주별 일정</button>
+            <button className={tab === "outputs" ? "active" : ""} type="button" onClick={() => setTab("outputs")}>동아리 성과(OUTPUT)</button>
             <button className={tab === "event" ? "active" : ""} type="button" onClick={() => setTab("event")}>주별 이벤트</button>
             <button className={tab === "other" ? "active" : ""} type="button" onClick={() => setTab("other")}>기타</button>
             <button className={tab === "attendance" ? "active" : ""} type="button" onClick={() => setTab("attendance")}>출석</button>
@@ -968,8 +1140,8 @@ function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub,
               <PostList posts={promos} isAdmin={isAdmin} currentUser={user} deletePost={deletePromo} updatePost={updatePromo} isPromo />
             </section>
           )}
-          {tab === "monthly" && <SchedulePanel title="월별 일정" collection="schedules" kind="monthly" items={data.schedules.filter((item) => item.clubId === selectedClubId && item.kind === "monthly")} isAdmin={isAdmin} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
-          {tab === "weekly" && <SchedulePanel title="주별 일정" collection="schedules" kind="weekly" items={data.schedules.filter((item) => item.clubId === selectedClubId && item.kind === "weekly")} isAdmin={isAdmin} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
+          {tab === "monthly" && <MonthlyCalendarPanel items={data.schedules.filter((item) => item.clubId === selectedClubId && item.kind === "monthly")} canManage={isMember} addSchedule={addSchedule} updateSchedule={updateSchedule} deleteSchedule={deleteSchedule} />}
+          {tab === "outputs" && <OutputPanel outputs={outputs} canManage={isMember} addOutput={addOutput} updateOutput={updateOutput} deleteOutput={deleteOutput} />}
           {tab === "event" && <SchedulePanel title="주별 이벤트" collection="events" kind="event" items={data.events.filter((item) => item.clubId === selectedClubId)} isAdmin={isAdmin} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
           {tab === "other" && <SchedulePanel title="기타" collection="schedules" kind="other" items={data.schedules.filter((item) => item.clubId === selectedClubId && item.kind === "other")} isAdmin={isAdmin} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
           {tab === "attendance" && <AttendancePanel data={data} members={members} user={user} isAdmin={isAdmin} clubId={selectedClubId} markAttendance={markAttendance} />}
@@ -983,6 +1155,17 @@ function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub,
       )}
     </div>
   );
+}
+
+function ClubDescription({ club }) {
+  if (club.id === "myth") {
+    return (
+      <span>
+        <strong className="orange-letter">신</strong>념을 이야기하고, 아이디어로 세상을 변<strong className="orange-letter">화</strong>시키는 동아리
+      </span>
+    );
+  }
+  return <span>{club.description}</span>;
 }
 
 function BoardPanel({ title, posts, user, isAdmin, addPost, deletePost, updatePost }) {
@@ -1001,6 +1184,263 @@ function BoardPanel({ title, posts, user, isAdmin, addPost, deletePost, updatePo
       </form>
       <PostList posts={posts} isAdmin={isAdmin} currentUser={user} deletePost={deletePost} updatePost={updatePost} />
     </section>
+  );
+}
+
+function MonthlyCalendarPanel({ items, canManage, addSchedule, updateSchedule, deleteSchedule }) {
+  const [month, setMonth] = useState(currentMonthKey());
+  const [selectedDate, setSelectedDate] = useState(todayKey());
+  const [form, setForm] = useState({ title: "", description: "" });
+  const days = useMemo(() => buildCalendarDays(month), [month]);
+  const itemsByDate = useMemo(() => {
+    return items.reduce((groups, item) => {
+      const date = item.date || todayKey();
+      groups[date] = [...(groups[date] || []), item];
+      return groups;
+    }, {});
+  }, [items]);
+  const selectedItems = [...(itemsByDate[selectedDate] || [])].sort((a, b) =>
+    String(a.title || "").localeCompare(String(b.title || ""), "ko"),
+  );
+
+  function moveMonth(delta) {
+    const next = addMonths(month, delta);
+    setMonth(next);
+    setSelectedDate(`${next}-01`);
+  }
+
+  function selectDay(day) {
+    setSelectedDate(day.date);
+    if (!day.currentMonth) setMonth(day.date.slice(0, 7));
+  }
+
+  return (
+    <section className="panel">
+      <div className="calendar-head">
+        <h2><CalendarDays size={19} /> 월별 일정</h2>
+        <div className="calendar-controls">
+          <button type="button" onClick={() => moveMonth(-1)} aria-label="이전 달"><ChevronLeft size={17} /></button>
+          <strong>{month.replace("-", ".")}</strong>
+          <button type="button" onClick={() => moveMonth(1)} aria-label="다음 달"><ChevronRight size={17} /></button>
+        </div>
+      </div>
+      <div className="calendar-grid">
+        {["일", "월", "화", "수", "목", "금", "토"].map((day) => (
+          <span className="calendar-weekday" key={day}>{day}</span>
+        ))}
+        {days.map((day) => {
+          const count = itemsByDate[day.date]?.length || 0;
+          return (
+            <button
+              className={[
+                "calendar-day",
+                day.currentMonth ? "" : "outside",
+                selectedDate === day.date ? "selected" : "",
+                count ? "has-item" : "",
+              ].filter(Boolean).join(" ")}
+              key={day.date}
+              type="button"
+              onClick={() => selectDay(day)}
+            >
+              <span>{day.label}</span>
+              {count > 0 && <strong>{count}</strong>}
+            </button>
+          );
+        })}
+      </div>
+      <div className="day-agenda">
+        <h3>{formatDate(selectedDate)} 일정</h3>
+        {canManage && (
+          <form
+            className="inline-form schedule-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              addSchedule("schedules", { ...form, date: selectedDate, kind: "monthly" });
+              setForm({ title: "", description: "" });
+            }}
+          >
+            <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="일정 제목" />
+            <input value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="메모" />
+            <button className="primary" type="submit"><Plus size={17} /> 추가</button>
+          </form>
+        )}
+        <div className="cards">
+          {selectedItems.length === 0 ? (
+            <p className="empty">선택한 날짜에 등록된 일정이 없습니다.</p>
+          ) : selectedItems.map((item) => (
+            <ScheduleItem
+              key={item.id}
+              item={item}
+              canManage={canManage}
+              updateSchedule={updateSchedule}
+              deleteSchedule={deleteSchedule}
+            />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ScheduleItem({ item, canManage, updateSchedule, deleteSchedule }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({
+    title: item.title || "",
+    date: item.date || todayKey(),
+    description: item.description || "",
+  });
+
+  async function save() {
+    if (!draft.title.trim()) return;
+    await updateSchedule("schedules", item, {
+      title: draft.title.trim(),
+      date: draft.date,
+      kind: "monthly",
+      description: draft.description.trim(),
+    });
+    setEditing(false);
+  }
+
+  return (
+    <article className="post">
+      {editing ? (
+        <div className="post-edit">
+          <input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="일정 제목" />
+          <div className="two">
+            <input type="date" value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value })} />
+            <input value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="메모" />
+          </div>
+          <div className="button-row">
+            <button className="primary" type="button" onClick={save}><Save size={15} /> 저장</button>
+            <button type="button" onClick={() => setEditing(false)}>취소</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <strong>{item.title}</strong>
+          <p>{item.description || "메모 없음"}</p>
+          <small>{formatDate(item.date)}</small>
+          {canManage && (
+            <footer>
+              <span />
+              <span className="post-actions">
+                <button type="button" onClick={() => setEditing(true)}><Pencil size={15} /> 수정</button>
+                <button type="button" onClick={() => deleteSchedule("schedules", item)}><Trash2 size={15} /> 삭제</button>
+              </span>
+            </footer>
+          )}
+        </>
+      )}
+    </article>
+  );
+}
+
+function OutputPanel({ outputs, canManage, addOutput, updateOutput, deleteOutput }) {
+  return (
+    <section className="panel">
+      <h2><Trophy size={19} /> 동아리 성과(OUTPUT)</h2>
+      {canManage && <OutputComposer addOutput={addOutput} />}
+      <div className="cards">
+        {outputs.length === 0 ? (
+          <p className="empty">등록된 성과가 없습니다.</p>
+        ) : outputs.map((output) => (
+          <OutputCard
+            key={output.id}
+            output={output}
+            canManage={canManage}
+            updateOutput={updateOutput}
+            deleteOutput={deleteOutput}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function OutputComposer({ addOutput }) {
+  const [form, setForm] = useState({ title: "", content: "", fileUrl: "", fileName: "", fileType: "" });
+  async function onFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const fileUrl = await readFileAsDataUrl(file);
+    setForm((current) => ({
+      ...current,
+      fileUrl,
+      fileName: file.name,
+      fileType: file.type,
+    }));
+  }
+  return (
+    <form
+      className="form output-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        addOutput(form);
+        setForm({ title: "", content: "", fileUrl: "", fileName: "", fileType: "" });
+      }}
+    >
+      <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="성과 제목" />
+      <textarea value={form.content} onChange={(event) => setForm({ ...form, content: event.target.value })} placeholder="성과 내용" />
+      <label className="file-field">
+        <Paperclip size={16} />
+        <span>{form.fileName || "그림 또는 첨부파일 선택"}</span>
+        <input type="file" onChange={onFile} />
+      </label>
+      <button className="primary" type="submit"><Plus size={17} /> 성과 등록</button>
+    </form>
+  );
+}
+
+function OutputCard({ output, canManage, updateOutput, deleteOutput }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({ title: output.title || "", content: output.content || "" });
+  const isImage = output.fileType?.startsWith("image/");
+
+  async function save() {
+    if (!draft.title.trim() && !draft.content.trim()) return;
+    await updateOutput(output, {
+      title: draft.title.trim() || "동아리 성과",
+      content: draft.content.trim(),
+    });
+    setEditing(false);
+  }
+
+  return (
+    <article className="post output-card">
+      {editing ? (
+        <div className="post-edit">
+          <input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="성과 제목" />
+          <textarea value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value })} placeholder="성과 내용" />
+          <div className="button-row">
+            <button className="primary" type="button" onClick={save}><Save size={15} /> 저장</button>
+            <button type="button" onClick={() => setEditing(false)}>취소</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <strong>{output.title}</strong>
+          {output.content && <p>{output.content}</p>}
+          {output.fileUrl && (
+            isImage ? (
+              <img className="output-image" src={output.fileUrl} alt={output.fileName || output.title} />
+            ) : (
+              <a className="file-link" href={output.fileUrl} download={output.fileName || "output-file"}>
+                <Download size={16} /> {output.fileName || "첨부파일"}
+              </a>
+            )
+          )}
+          <footer>
+            <span>{output.authorName} · 작성 {formatDate(output.createdAt)}{output.editedAt && ` · 수정 ${formatDateTime(output.editedAt)}`}</span>
+            {canManage && (
+              <span className="post-actions">
+                <button type="button" onClick={() => { setDraft({ title: output.title || "", content: output.content || "" }); setEditing(true); }}><Pencil size={15} /> 수정</button>
+                <button type="button" onClick={() => deleteOutput(output)}><Trash2 size={15} /> 삭제</button>
+              </span>
+            )}
+          </footer>
+        </>
+      )}
+    </article>
   );
 }
 
@@ -1077,6 +1517,9 @@ function ProfilePage({ data, user, saveProfile, changePassword, submitPwRequest 
   const [changingPw, setChangingPw] = useState(false);
   const [requestingPw, setRequestingPw] = useState(false);
   const myRequests = data.pwRequests.filter((req) => req.memberId === user.id);
+  const myMessages = (data.messages || [])
+    .filter((item) => item.recipientId === "all" || item.recipientId === user.id)
+    .sort(sortNewest);
 
   return (
     <div className="stack">
@@ -1106,7 +1549,30 @@ function ProfilePage({ data, user, saveProfile, changePassword, submitPwRequest 
       {editing && <ProfileEditor user={user} saveProfile={saveProfile} done={() => setEditing(false)} />}
       {changingPw && <PasswordEditor changePassword={changePassword} done={() => setChangingPw(false)} />}
       {requestingPw && <PwRequestPanel requests={myRequests} submitPwRequest={submitPwRequest} />}
+      <MessageInbox messages={myMessages} />
     </div>
+  );
+}
+
+function MessageInbox({ messages }) {
+  return (
+    <section className="panel">
+      <h2><Mail size={19} /> 쪽지함</h2>
+      <div className="cards">
+        {messages.length === 0 ? (
+          <p className="empty">받은 쪽지가 없습니다.</p>
+        ) : messages.map((message) => (
+          <article className="post" key={message.id}>
+            <div className="post-head">
+              <span className="global-badge">{message.scope === "all" ? "전체" : "개별"}</span>
+              <strong>{message.title}</strong>
+            </div>
+            <p>{message.content}</p>
+            <footer><span>{message.senderName} · {formatDateTime(message.createdAt)}</span></footer>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -1201,10 +1667,10 @@ function PasswordEditor({ changePassword, done }) {
       <h2><KeyRound size={19} /> 비밀번호 변경</h2>
       {error && <div className="alert error">{error}</div>}
       <form className="form" onSubmit={submit}>
-        <input type="password" maxLength={8} placeholder="현재 비밀번호 8자리" value={form.oldPassword} onChange={(event) => setForm({ ...form, oldPassword: event.target.value.replace(/\D/g, "") })} />
+        <PasswordInput maxLength={8} placeholder="현재 비밀번호 8자리" value={form.oldPassword} onChange={(value) => setForm({ ...form, oldPassword: value.replace(/\D/g, "") })} />
         <div className="two">
-          <input type="password" maxLength={8} placeholder="새 비밀번호 8자리" value={form.newPassword} onChange={(event) => setForm({ ...form, newPassword: event.target.value.replace(/\D/g, "") })} />
-          <input type="password" maxLength={8} placeholder="새 비밀번호 확인" value={form.confirmPassword} onChange={(event) => setForm({ ...form, confirmPassword: event.target.value.replace(/\D/g, "") })} />
+          <PasswordInput maxLength={8} placeholder="새 비밀번호 8자리" value={form.newPassword} onChange={(value) => setForm({ ...form, newPassword: value.replace(/\D/g, "") })} />
+          <PasswordInput maxLength={8} placeholder="새 비밀번호 확인" value={form.confirmPassword} onChange={(value) => setForm({ ...form, confirmPassword: value.replace(/\D/g, "") })} />
         </div>
         <div className="actions">
           <button type="button" onClick={done}>취소</button>
@@ -1237,7 +1703,7 @@ function PwRequestPanel({ requests, submitPwRequest }) {
   );
 }
 
-function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, approveSignupRequest, rejectSignupRequest, updateRecord, forceWithdraw, refresh }) {
+function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, approveSignupRequest, rejectSignupRequest, restoreSignupRequest, updateRecord, sendMessage, forceWithdraw, refresh }) {
   const pendingPwCount = data.pwRequests.filter((req) => req.status === "pending").length;
   const pendingSignupCount = data.signupRequests.filter((req) => req.approvalStatus === "pending").length;
   return (
@@ -1250,14 +1716,16 @@ function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyP
         <button className={tab === "members" ? "active" : ""} type="button" onClick={() => setTab("members")}>회원</button>
         <button className={tab === "signup" ? "active" : ""} type="button" onClick={() => setTab("signup")}>가입신청 {pendingSignupCount || ""}</button>
         <button className={tab === "pw" ? "active" : ""} type="button" onClick={() => setTab("pw")}>비번요청 {pendingPwCount || ""}</button>
+        <button className={tab === "messages" ? "active" : ""} type="button" onClick={() => setTab("messages")}>쪽지</button>
         <button className={tab === "resources" ? "active" : ""} type="button" onClick={() => setTab("resources")}>자료</button>
         <button className={tab === "posts" ? "active" : ""} type="button" onClick={() => setTab("posts")}>게시판</button>
         <button className={tab === "stats" ? "active" : ""} type="button" onClick={() => setTab("stats")}>통계</button>
         <button className={tab === "withdrawals" ? "active" : ""} type="button" onClick={() => setTab("withdrawals")}>탈퇴이력</button>
       </div>
       {tab === "members" && <AdminMembers members={data.members} forceWithdraw={forceWithdraw} />}
-      {tab === "signup" && <AdminSignupRequests requests={data.signupRequests} approveSignupRequest={approveSignupRequest} rejectSignupRequest={rejectSignupRequest} />}
+      {tab === "signup" && <AdminSignupRequests requests={data.signupRequests} approveSignupRequest={approveSignupRequest} rejectSignupRequest={rejectSignupRequest} restoreSignupRequest={restoreSignupRequest} />}
       {tab === "pw" && <AdminPwRequests requests={data.pwRequests} members={data.members} replyPwRequest={replyPwRequest} />}
+      {tab === "messages" && <AdminMessages members={data.members} messages={data.messages} sendMessage={sendMessage} deleteMessage={(item) => deleteRecord("messages", item)} />}
       {tab === "resources" && <AdminResources resources={data.resources} addResource={addResource} deleteResource={(item) => deleteRecord("resources", item)} />}
       {tab === "posts" && (
         <>
@@ -1288,7 +1756,7 @@ function AdminMembers({ members, forceWithdraw }) {
   );
 }
 
-function AdminSignupRequests({ requests, approveSignupRequest, rejectSignupRequest }) {
+function AdminSignupRequests({ requests, approveSignupRequest, rejectSignupRequest, restoreSignupRequest }) {
   const sorted = [...requests].sort((a, b) => {
     if (a.approvalStatus === "pending" && b.approvalStatus !== "pending") return -1;
     if (a.approvalStatus !== "pending" && b.approvalStatus === "pending") return 1;
@@ -1307,6 +1775,7 @@ function AdminSignupRequests({ requests, approveSignupRequest, rejectSignupReque
             request={request}
             approveSignupRequest={approveSignupRequest}
             rejectSignupRequest={rejectSignupRequest}
+            restoreSignupRequest={restoreSignupRequest}
           />
         ))}
       </div>
@@ -1314,10 +1783,11 @@ function AdminSignupRequests({ requests, approveSignupRequest, rejectSignupReque
   );
 }
 
-function SignupRequestRow({ request, approveSignupRequest, rejectSignupRequest }) {
+function SignupRequestRow({ request, approveSignupRequest, rejectSignupRequest, restoreSignupRequest }) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const pending = request.approvalStatus === "pending";
+  const rejected = request.approvalStatus === "rejected";
   const statusText =
     request.approvalStatus === "approved"
       ? "승인 완료"
@@ -1366,6 +1836,36 @@ function SignupRequestRow({ request, approveSignupRequest, rejectSignupRequest }
             </button>
           </div>
         </>
+      ) : rejected ? (
+        <div className="button-row">
+          <button
+            type="button"
+            onClick={async () => {
+              setError("");
+              try {
+                await restoreSignupRequest(request);
+              } catch (err) {
+                setError(err.message);
+              }
+            }}
+          >
+            거부 취소
+          </button>
+          <button
+            className="primary"
+            type="button"
+            onClick={async () => {
+              setError("");
+              try {
+                await approveSignupRequest(request);
+              } catch (err) {
+                setError(err.message);
+              }
+            }}
+          >
+            승인
+          </button>
+        </div>
       ) : (
         <small>{request.reviewedAt ? `${formatDateTime(request.reviewedAt)} 처리` : ""}</small>
       )}
@@ -1433,6 +1933,60 @@ function PwReplyRow({ req, member, replyPwRequest }) {
         <p>답변: {req.adminReply}</p>
       )}
     </article>
+  );
+}
+
+function AdminMessages({ members, messages = [], sendMessage, deleteMessage }) {
+  const [form, setForm] = useState({ recipientId: "all", title: "", content: "" });
+  const [error, setError] = useState("");
+  const sorted = [...messages].sort(sortNewest);
+
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+    try {
+      await sendMessage(form);
+      setForm({ recipientId: "all", title: "", content: "" });
+    } catch (err) {
+      setError(err.message || "쪽지 발송에 실패했습니다.");
+    }
+  }
+
+  return (
+    <section className="panel">
+      <h2><Mail size={19} /> 쪽지 보내기</h2>
+      {error && <div className="alert error">{error}</div>}
+      <form className="form" onSubmit={submit}>
+        <div className="two">
+          <select value={form.recipientId} onChange={(event) => setForm({ ...form, recipientId: event.target.value })}>
+            <option value="all">전체 회원</option>
+            {members.map((member) => (
+              <option key={member.id} value={member.id}>{memberLabel(member)}</option>
+            ))}
+          </select>
+          <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="쪽지 제목" />
+        </div>
+        <textarea value={form.content} onChange={(event) => setForm({ ...form, content: event.target.value })} placeholder="쪽지 내용" />
+        <button className="primary" type="submit"><Send size={17} /> 보내기</button>
+      </form>
+      <div className="cards message-history">
+        {sorted.length === 0 ? (
+          <p className="empty">보낸 쪽지가 없습니다.</p>
+        ) : sorted.map((message) => (
+          <article className="post" key={message.id}>
+            <div className="post-head">
+              <span className="global-badge">{message.scope === "all" ? "전체" : "개별"}</span>
+              <strong>{message.title}</strong>
+            </div>
+            <p>{message.content}</p>
+            <footer>
+              <span>{message.recipientName} · {formatDateTime(message.createdAt)}</span>
+              <button type="button" onClick={() => deleteMessage(message)}><Trash2 size={15} /> 삭제</button>
+            </footer>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -1725,14 +2279,16 @@ function Bar({ label, value, max, color, suffix }) {
 }
 
 async function fetchRemoteData() {
-  const [members, posts, promos, schedules, events, attendance, resources, pwRequests, signupRequests, withdrawals] = await Promise.all([
+  const [members, posts, promos, schedules, events, attendance, outputs, resources, messages, pwRequests, signupRequests, withdrawals] = await Promise.all([
     fbGet("members"),
     fbGet("posts"),
     fbGet("promos"),
     fbGet("schedules"),
     fbGet("events"),
     fbGet("attendance"),
+    fbGet("outputs"),
     fbGet("resources"),
+    fbGet("messages"),
     fbGet("pwRequests"),
     fbGet("signupRequests"),
     fbGet("withdrawals"),
@@ -1745,7 +2301,9 @@ async function fetchRemoteData() {
     schedules: toArray(schedules).sort(sortNewest),
     events: toArray(events).sort(sortNewest),
     attendance: toArray(attendance, "key"),
+    outputs: toArray(outputs).sort(sortNewest),
     resources: toArray(resources).sort(sortNewest),
+    messages: toArray(messages).sort(sortNewest),
     pwRequests: toArray(pwRequests).sort(sortNewest),
     signupRequests: toArray(signupRequests).sort(sortNewest),
     withdrawals: toArray(withdrawals).sort(sortNewest),
@@ -1849,7 +2407,9 @@ function readLocalData() {
     schedules: readStorage(STORAGE.schedules, []),
     events: readStorage(STORAGE.events, []),
     attendance: readStorage(STORAGE.attendance, []),
+    outputs: readStorage(STORAGE.outputs, []),
     resources: readStorage(STORAGE.resources, []),
+    messages: readStorage(STORAGE.messages, []),
     pwRequests: readStorage(STORAGE.pwRequests, []),
     signupRequests: readStorage(STORAGE.signupRequests, []),
     withdrawals: readStorage(STORAGE.withdrawals, []),
@@ -1863,7 +2423,9 @@ function saveLocalData(data) {
   writeStorage(STORAGE.schedules, data.schedules);
   writeStorage(STORAGE.events, data.events);
   writeStorage(STORAGE.attendance, data.attendance);
+  writeStorage(STORAGE.outputs, data.outputs);
   writeStorage(STORAGE.resources, data.resources);
+  writeStorage(STORAGE.messages, data.messages);
   writeStorage(STORAGE.pwRequests, data.pwRequests);
   writeStorage(STORAGE.signupRequests, data.signupRequests);
   writeStorage(STORAGE.withdrawals, data.withdrawals);
@@ -1923,6 +2485,7 @@ function firebaseRecordKey(record, fallback) {
 }
 
 function buildStats(data) {
+  const outputs = data.outputs || [];
   return CLUB_LIST.map((club) => {
     const members = data.members.filter((member) => member.clubs?.includes(club.id));
     const attendance = data.attendance.filter((item) => item.clubId === club.id);
@@ -1934,6 +2497,7 @@ function buildStats(data) {
       graduated: members.filter((member) => member.status === "graduated").length,
       posts: data.posts.filter((post) => post.clubId === club.id).length,
       promos: data.promos.filter((promo) => promo.clubId === club.id).length,
+      outputs: outputs.filter((item) => item.clubId === club.id).length,
       resources: data.resources.filter((item) => item.clubId === club.id).length,
       attendanceRate: attendance.length ? Math.round((present / attendance.length) * 100) : 0,
     };
@@ -1984,6 +2548,43 @@ function makeId(prefix) {
 
 function now() {
   return new Date().toISOString();
+}
+
+function todayKey() {
+  return dateKey(new Date());
+}
+
+function currentMonthKey() {
+  return todayKey().slice(0, 7);
+}
+
+function dateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addMonths(monthKey, delta) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const date = new Date(year, month - 1 + delta, 1);
+  return dateKey(date).slice(0, 7);
+}
+
+function buildCalendarDays(monthKey) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const first = new Date(year, month - 1, 1);
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return {
+      date: dateKey(date),
+      label: date.getDate(),
+      currentMonth: date.getMonth() === month - 1,
+    };
+  });
 }
 
 function formatDate(value) {
