@@ -35,6 +35,7 @@ const STORAGE = {
   attendance: "nm_attend",
   resources: "nm_resources",
   pwRequests: "nm_pwreq",
+  signupRequests: "nm_signup_requests",
   withdrawals: "nm_withdrawals",
 };
 
@@ -81,6 +82,7 @@ const EMPTY_DATA = {
   attendance: [],
   resources: [],
   pwRequests: [],
+  signupRequests: [],
   withdrawals: [],
 };
 
@@ -139,6 +141,7 @@ export default function App() {
   const selectedClub = CLUBS[selectedClubId] || CLUBS.hora;
   const stats = useMemo(() => buildStats(data), [data]);
   const pendingPwCount = data.pwRequests.filter((req) => req.status === "pending").length;
+  const pendingSignupCount = data.signupRequests.filter((req) => req.approvalStatus === "pending").length;
 
   async function refreshData({ silent = false } = {}) {
     if (!silent) setLoading(true);
@@ -198,6 +201,19 @@ export default function App() {
         ),
       );
       if (!member) {
+        const matchingRequest = pickLatestRequest(
+          remote.signupRequests.filter(
+            (item) => item.name === form.name.trim() && item.password === form.password.trim(),
+          ),
+        );
+        if (matchingRequest?.approvalStatus === "pending") {
+          setError("가입 신청이 아직 관리자 승인 대기 중입니다.");
+          return;
+        }
+        if (matchingRequest?.approvalStatus === "rejected") {
+          setError("가입 신청이 거부되었습니다. 관리자에게 문의해주세요.");
+          return;
+        }
         setError("이름 또는 비밀번호가 일치하지 않습니다.");
         return;
       }
@@ -234,26 +250,39 @@ export default function App() {
         return;
       }
 
-      const member = {
-        id: makeId("member"),
+      const pendingRequest = remote.signupRequests.some(
+        (request) =>
+          request.approvalStatus === "pending" &&
+          request.name === form.name.trim() &&
+          String(request.studentYear) === String(form.studentYear),
+      );
+      if (pendingRequest) {
+        setError("이미 관리자 승인 대기 중인 가입 신청이 있습니다.");
+        return;
+      }
+
+      const request = {
+        id: makeId("signup"),
         name: form.name.trim(),
         studentYear: form.studentYear,
         gender: form.gender,
         status: form.status,
         clubs: form.clubs,
         password: form.password,
-        joinedAt: now(),
-        updatedAt: now(),
+        approvalStatus: "pending",
+        requestedAt: now(),
+        createdAt: now(),
       };
-      await persistMember(member);
-      setData({ ...remote, members: upsertById(remote.members, member) });
-      setUser(member);
-      setIsAdmin(false);
-      setPage("home");
-      setMessage("가입 정보가 Firebase에 저장되었습니다.");
+      await fbPatch("signupRequests", { [firebaseKey(request.id)]: cleanFirebase(request) });
+      setData({
+        ...remote,
+        signupRequests: [request, ...remote.signupRequests],
+      });
+      setAuthMode("login");
+      setMessage("가입 신청이 전송되었습니다. 관리자가 승인하면 로그인할 수 있습니다.");
     } catch (err) {
       console.error(err);
-      setError("가입 정보를 Firebase에 저장하지 못했습니다.");
+      setError("가입 신청을 Firebase에 저장하지 못했습니다.");
     } finally {
       setLoading(false);
     }
@@ -338,6 +367,20 @@ export default function App() {
     await fbPatch("promos", Object.fromEntries(newPromos.map((item) => [firebaseKey(item.id), cleanFirebase(item)])));
   }
 
+  async function updateRecord(collection, record, changes) {
+    const updated = {
+      ...record,
+      ...changes,
+      editedAt: now(),
+      updatedAt: now(),
+    };
+    setData((current) => ({
+      ...current,
+      [collection]: upsertById(current[collection] || [], updated),
+    }));
+    await fbPatch(collection, { [firebaseRecordKey(record, record.id)]: cleanFirebase(updated) });
+  }
+
   async function addSchedule(collection, form) {
     if (!form.title.trim()) return;
     const item = {
@@ -402,6 +445,59 @@ export default function App() {
     const updated = { ...req, status: "done", adminReply: reply.trim(), repliedAt: now() };
     setData((current) => ({ ...current, pwRequests: upsertById(current.pwRequests, updated) }));
     await fbPatch("pwRequests", { [firebaseRecordKey(req, req.id)]: cleanFirebase(updated) });
+  }
+
+  async function approveSignupRequest(req) {
+    const latest = await fetchRemoteData().catch(() => data);
+    const duplicate = latest.members.some(
+      (member) =>
+        member.name === req.name &&
+        String(member.studentYear) === String(req.studentYear),
+    );
+    if (duplicate) {
+      throw new Error("이미 같은 이름+학번 회원이 존재합니다.");
+    }
+
+    const member = {
+      id: makeId("member"),
+      name: req.name,
+      studentYear: req.studentYear,
+      gender: req.gender,
+      status: req.status,
+      clubs: req.clubs || [],
+      password: req.password,
+      joinedAt: now(),
+      updatedAt: now(),
+      approvedFromRequestId: req.id,
+    };
+    const reviewed = {
+      ...req,
+      approvalStatus: "approved",
+      reviewedAt: now(),
+    };
+    await persistMember(member);
+    await fbPatch("signupRequests", { [firebaseRecordKey(req, req.id)]: cleanFirebase(reviewed) });
+    setData((current) => ({
+      ...current,
+      members: upsertById(current.members, member),
+      signupRequests: upsertById(current.signupRequests, reviewed),
+    }));
+    setMessage(`${req.name}님의 가입을 승인했습니다.`);
+  }
+
+  async function rejectSignupRequest(req, reason) {
+    const reviewed = {
+      ...req,
+      approvalStatus: "rejected",
+      rejectReason: reason.trim() || "관리자 거부",
+      reviewedAt: now(),
+    };
+    await fbPatch("signupRequests", { [firebaseRecordKey(req, req.id)]: cleanFirebase(reviewed) });
+    setData((current) => ({
+      ...current,
+      signupRequests: upsertById(current.signupRequests, reviewed),
+    }));
+    setMessage(`${req.name}님의 가입 신청을 거부했습니다.`);
   }
 
   async function forceWithdraw(member, reason) {
@@ -479,7 +575,7 @@ export default function App() {
           <NavButton id="home" page={page} setPage={setPage} icon={Home} label="홈" />
           <NavButton id="integrated" page={page} setPage={setPage} icon={BarChart3} label="통합현황" />
           <NavButton id="club" page={page} setPage={setPage} icon={Users} label="동아리" />
-          {isAdmin && <NavButton id="admin" page={page} setPage={setPage} icon={ShieldCheck} label={`관리자${pendingPwCount ? ` ${pendingPwCount}` : ""}`} />}
+          {isAdmin && <NavButton id="admin" page={page} setPage={setPage} icon={ShieldCheck} label={`관리자${pendingPwCount + pendingSignupCount ? ` ${pendingPwCount + pendingSignupCount}` : ""}`} />}
           {!isAdmin && <NavButton id="profile" page={page} setPage={setPage} icon={User} label="내 정보" />}
         </nav>
         <div className="session">
@@ -502,6 +598,7 @@ export default function App() {
           openClub={openClub}
           addPromo={addPromo}
           deletePromo={(promo) => deleteRecord("promos", promo)}
+          updatePromo={(promo, changes) => updateRecord("promos", promo, changes)}
         />
       )}
       {page === "integrated" && (
@@ -526,6 +623,9 @@ export default function App() {
           setTab={setClubTab}
           addPost={addPost}
           deletePost={(post) => deleteRecord("posts", post)}
+          updatePost={(post, changes) => updateRecord("posts", post, changes)}
+          deletePromo={(promo) => deleteRecord("promos", promo)}
+          updatePromo={(promo, changes) => updateRecord("promos", promo, changes)}
           addSchedule={addSchedule}
           deleteSchedule={(collection, record) => deleteRecord(collection, record)}
           markAttendance={markAttendance}
@@ -549,6 +649,9 @@ export default function App() {
           deleteRecord={deleteRecord}
           addResource={addResource}
           replyPwRequest={replyPwRequest}
+          approveSignupRequest={approveSignupRequest}
+          rejectSignupRequest={rejectSignupRequest}
+          updateRecord={updateRecord}
           forceWithdraw={forceWithdraw}
           refresh={() => refreshData()}
         />
@@ -566,6 +669,8 @@ function AuthScreen({ mode, setMode, login, register, loading, error, message })
         <ClubImageGrid compact />
         <div className="notice">
           일반 회원 비밀번호는 <strong>숫자 8자리</strong>입니다. 예: 생년월일 8자리
+          <br />
+          신규 가입은 관리자 승인 후 로그인할 수 있습니다.
         </div>
         <div className="tabs">
           <button className={mode === "login" ? "active" : ""} type="button" onClick={() => setMode("login")}>로그인</button>
@@ -675,12 +780,12 @@ function RegisterForm({ register, loading }) {
           />
         </label>
       </div>
-      <button className="primary" disabled={loading} type="submit">가입하기</button>
+      <button className="primary" disabled={loading} type="submit">가입 신청하기</button>
     </form>
   );
 }
 
-function HomePage({ data, isAdmin, user, myClubIds, openClub, addPromo, deletePromo }) {
+function HomePage({ data, isAdmin, user, myClubIds, openClub, addPromo, deletePromo, updatePromo }) {
   const writableClubs = isAdmin ? CLUB_LIST : CLUB_LIST.filter((club) => user.clubs?.includes(club.id));
   const visiblePromos = isAdmin ? data.promos : data.promos.filter((promo) => myClubIds.includes(promo.clubId));
 
@@ -701,7 +806,7 @@ function HomePage({ data, isAdmin, user, myClubIds, openClub, addPromo, deletePr
 
       <section className="panel">
         <h2><Megaphone size={19} /> 홍보 게시판</h2>
-        <PostList posts={visiblePromos} isAdmin={isAdmin} deletePost={deletePromo} isPromo />
+        <PostList posts={visiblePromos} isAdmin={isAdmin} currentUser={user} deletePost={deletePromo} updatePost={updatePromo} isPromo />
       </section>
     </div>
   );
@@ -825,7 +930,7 @@ function CompareStats({ stats }) {
   );
 }
 
-function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub, tab, setTab, addPost, deletePost, addSchedule, deleteSchedule, markAttendance }) {
+function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub, tab, setTab, addPost, deletePost, updatePost, deletePromo, updatePromo, addSchedule, deleteSchedule, markAttendance }) {
   const isMember = isAdmin || user.clubs?.includes(selectedClubId);
   const posts = data.posts.filter((post) => post.clubId === selectedClubId);
   const promos = data.promos.filter((promo) => promo.clubId === selectedClubId);
@@ -856,11 +961,11 @@ function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub,
             <button className={tab === "attendance" ? "active" : ""} type="button" onClick={() => setTab("attendance")}>출석</button>
             <button className={tab === "members" ? "active" : ""} type="button" onClick={() => setTab("members")}>회원</button>
           </div>
-          {tab === "board" && <BoardPanel title={selectedClub.boardName} posts={posts} user={user} isAdmin={isAdmin} addPost={addPost} deletePost={deletePost} />}
+          {tab === "board" && <BoardPanel title={selectedClub.boardName} posts={posts} user={user} isAdmin={isAdmin} addPost={addPost} deletePost={deletePost} updatePost={updatePost} />}
           {tab === "promo" && (
             <section className="panel">
               <h2><Megaphone size={19} /> {selectedClub.name} 홍보 게시판</h2>
-              <PostList posts={promos} isAdmin={isAdmin} deletePost={() => {}} isPromo />
+              <PostList posts={promos} isAdmin={isAdmin} currentUser={user} deletePost={deletePromo} updatePost={updatePromo} isPromo />
             </section>
           )}
           {tab === "monthly" && <SchedulePanel title="월별 일정" collection="schedules" kind="monthly" items={data.schedules.filter((item) => item.clubId === selectedClubId && item.kind === "monthly")} isAdmin={isAdmin} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
@@ -880,7 +985,7 @@ function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub,
   );
 }
 
-function BoardPanel({ title, posts, user, isAdmin, addPost, deletePost }) {
+function BoardPanel({ title, posts, user, isAdmin, addPost, deletePost, updatePost }) {
   const [content, setContent] = useState("");
   const [anonymous, setAnonymous] = useState(false);
   return (
@@ -894,7 +999,7 @@ function BoardPanel({ title, posts, user, isAdmin, addPost, deletePost }) {
         </label>
         <button className="primary" type="submit"><Plus size={17} /> 등록</button>
       </form>
-      <PostList posts={posts} isAdmin={isAdmin} currentUser={user} deletePost={deletePost} />
+      <PostList posts={posts} isAdmin={isAdmin} currentUser={user} deletePost={deletePost} updatePost={updatePost} />
     </section>
   );
 }
@@ -1132,8 +1237,9 @@ function PwRequestPanel({ requests, submitPwRequest }) {
   );
 }
 
-function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, forceWithdraw, refresh }) {
+function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, approveSignupRequest, rejectSignupRequest, updateRecord, forceWithdraw, refresh }) {
   const pendingPwCount = data.pwRequests.filter((req) => req.status === "pending").length;
+  const pendingSignupCount = data.signupRequests.filter((req) => req.approvalStatus === "pending").length;
   return (
     <div className="stack">
       <section className="toolbar">
@@ -1142,6 +1248,7 @@ function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyP
       </section>
       <div className="tabs">
         <button className={tab === "members" ? "active" : ""} type="button" onClick={() => setTab("members")}>회원</button>
+        <button className={tab === "signup" ? "active" : ""} type="button" onClick={() => setTab("signup")}>가입신청 {pendingSignupCount || ""}</button>
         <button className={tab === "pw" ? "active" : ""} type="button" onClick={() => setTab("pw")}>비번요청 {pendingPwCount || ""}</button>
         <button className={tab === "resources" ? "active" : ""} type="button" onClick={() => setTab("resources")}>자료</button>
         <button className={tab === "posts" ? "active" : ""} type="button" onClick={() => setTab("posts")}>게시판</button>
@@ -1149,17 +1256,18 @@ function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyP
         <button className={tab === "withdrawals" ? "active" : ""} type="button" onClick={() => setTab("withdrawals")}>탈퇴이력</button>
       </div>
       {tab === "members" && <AdminMembers members={data.members} forceWithdraw={forceWithdraw} />}
+      {tab === "signup" && <AdminSignupRequests requests={data.signupRequests} approveSignupRequest={approveSignupRequest} rejectSignupRequest={rejectSignupRequest} />}
       {tab === "pw" && <AdminPwRequests requests={data.pwRequests} members={data.members} replyPwRequest={replyPwRequest} />}
       {tab === "resources" && <AdminResources resources={data.resources} addResource={addResource} deleteResource={(item) => deleteRecord("resources", item)} />}
       {tab === "posts" && (
         <>
           <section className="panel">
             <h2>게시글 관리</h2>
-            <PostList posts={data.posts} isAdmin deletePost={(post) => deleteRecord("posts", post)} />
+            <PostList posts={data.posts} isAdmin deletePost={(post) => deleteRecord("posts", post)} updatePost={(post, changes) => updateRecord("posts", post, changes)} />
           </section>
           <section className="panel">
             <h2>홍보글 관리</h2>
-            <PostList posts={data.promos} isAdmin deletePost={(post) => deleteRecord("promos", post)} isPromo />
+            <PostList posts={data.promos} isAdmin deletePost={(post) => deleteRecord("promos", post)} updatePost={(post, changes) => updateRecord("promos", post, changes)} isPromo />
           </section>
         </>
       )}
@@ -1177,6 +1285,92 @@ function AdminMembers({ members, forceWithdraw }) {
         {members.map((member) => <ForceWithdrawRow key={member.id} member={member} forceWithdraw={forceWithdraw} />)}
       </div>
     </section>
+  );
+}
+
+function AdminSignupRequests({ requests, approveSignupRequest, rejectSignupRequest }) {
+  const sorted = [...requests].sort((a, b) => {
+    if (a.approvalStatus === "pending" && b.approvalStatus !== "pending") return -1;
+    if (a.approvalStatus !== "pending" && b.approvalStatus === "pending") return 1;
+    return recordTime(b) - recordTime(a);
+  });
+  if (sorted.length === 0) {
+    return <section className="panel"><p className="empty">가입 신청이 없습니다.</p></section>;
+  }
+  return (
+    <section className="panel">
+      <h2><ShieldCheck size={19} /> 가입 신청 관리</h2>
+      <div className="cards">
+        {sorted.map((request) => (
+          <SignupRequestRow
+            key={request.id}
+            request={request}
+            approveSignupRequest={approveSignupRequest}
+            rejectSignupRequest={rejectSignupRequest}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SignupRequestRow({ request, approveSignupRequest, rejectSignupRequest }) {
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const pending = request.approvalStatus === "pending";
+  const statusText =
+    request.approvalStatus === "approved"
+      ? "승인 완료"
+      : request.approvalStatus === "rejected"
+        ? "거부 완료"
+        : "승인 대기";
+
+  return (
+    <article className="admin-row signup-row">
+      <div>
+        <strong>{memberLabel(request)} {psMark(request.status)}</strong>
+        <p>{genderLabel(request.gender)} · {statusLabel(request.status)} · 신청일 {formatDateTime(request.requestedAt || request.createdAt)}</p>
+        <div className="badges">{(request.clubs || []).map((clubId) => <ClubBadge key={clubId} clubId={clubId} />)}</div>
+        <small>상태: {statusText}{request.rejectReason ? ` · 사유: ${request.rejectReason}` : ""}</small>
+      </div>
+      {pending ? (
+        <>
+          <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="거부 사유(선택)" />
+          <div className="button-row">
+            <button
+              className="primary"
+              type="button"
+              onClick={async () => {
+                setError("");
+                try {
+                  await approveSignupRequest(request);
+                } catch (err) {
+                  setError(err.message);
+                }
+              }}
+            >
+              승인
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                setError("");
+                try {
+                  await rejectSignupRequest(request, reason);
+                } catch (err) {
+                  setError(err.message);
+                }
+              }}
+            >
+              거부
+            </button>
+          </div>
+        </>
+      ) : (
+        <small>{request.reviewedAt ? `${formatDateTime(request.reviewedAt)} 처리` : ""}</small>
+      )}
+      {error && <small className="danger">{error}</small>}
+    </article>
   );
 }
 
@@ -1364,28 +1558,97 @@ function ClubPicker({ selected, toggle, imageMode = false }) {
   );
 }
 
-function PostList({ posts, isAdmin, currentUser, deletePost, isPromo = false }) {
+function PostList({ posts, isAdmin, currentUser, deletePost, updatePost, isPromo = false }) {
   if (posts.length === 0) return <p className="empty">등록된 글이 없습니다.</p>;
   return (
     <div className="cards">
       {posts.map((post) => (
-        <article className="post" key={post.id}>
-          <div className="post-head">
-            <ClubBadge clubId={post.clubId} />
-            {post.isGlobal && <span className="global-badge">전체공지</span>}
-            {post.isAnon && <span className="secret-badge">익명</span>}
-          </div>
-          {isPromo && <h3>{post.title}</h3>}
-          <p>{post.content}</p>
-          <footer>
-            <span>{post.authorName} · {formatDate(post.createdAt)}</span>
-            {(isAdmin || currentUser?.id === post.authorId) && (
-              <button type="button" onClick={() => deletePost(post)}><Trash2 size={15} /> 삭제</button>
-            )}
-          </footer>
-        </article>
+        <PostCard
+          key={post.id}
+          post={post}
+          isAdmin={isAdmin}
+          currentUser={currentUser}
+          deletePost={deletePost}
+          updatePost={updatePost}
+          isPromo={isPromo}
+        />
       ))}
     </div>
+  );
+}
+
+function PostCard({ post, isAdmin, currentUser, deletePost, updatePost, isPromo }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({
+    title: post.title || "",
+    content: post.content || "",
+  });
+  const canManage = isAdmin || currentUser?.id === post.authorId;
+
+  async function saveEdit() {
+    if (!draft.content.trim()) return;
+    const changes = isPromo
+      ? { title: draft.title.trim(), content: draft.content.trim() }
+      : { content: draft.content.trim() };
+    await updatePost?.(post, changes);
+    setEditing(false);
+  }
+
+  return (
+    <article className="post">
+      <div className="post-head">
+        <ClubBadge clubId={post.clubId} />
+        {post.isGlobal && <span className="global-badge">전체공지</span>}
+        {post.isAnon && <span className="secret-badge">익명</span>}
+      </div>
+      {editing ? (
+        <div className="post-edit">
+          {isPromo && (
+            <input
+              value={draft.title}
+              onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+              placeholder="제목"
+            />
+          )}
+          <textarea
+            value={draft.content}
+            onChange={(event) => setDraft({ ...draft, content: event.target.value })}
+            placeholder="내용"
+          />
+          <div className="button-row">
+            <button className="primary" type="button" onClick={saveEdit}><Save size={15} /> 저장</button>
+            <button type="button" onClick={() => setEditing(false)}>취소</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {isPromo && <h3>{post.title}</h3>}
+          <p>{post.content}</p>
+        </>
+      )}
+      <footer>
+        <span>
+          {post.authorName} · 작성 {formatDate(post.createdAt)}
+          {post.editedAt && ` · 수정 ${formatDateTime(post.editedAt)}`}
+        </span>
+        {canManage && !editing && (
+          <span className="post-actions">
+            {updatePost && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDraft({ title: post.title || "", content: post.content || "" });
+                  setEditing(true);
+                }}
+              >
+                <Pencil size={15} /> 수정
+              </button>
+            )}
+            {deletePost && <button type="button" onClick={() => deletePost(post)}><Trash2 size={15} /> 삭제</button>}
+          </span>
+        )}
+      </footer>
+    </article>
   );
 }
 
@@ -1462,7 +1725,7 @@ function Bar({ label, value, max, color, suffix }) {
 }
 
 async function fetchRemoteData() {
-  const [members, posts, promos, schedules, events, attendance, resources, pwRequests, withdrawals] = await Promise.all([
+  const [members, posts, promos, schedules, events, attendance, resources, pwRequests, signupRequests, withdrawals] = await Promise.all([
     fbGet("members"),
     fbGet("posts"),
     fbGet("promos"),
@@ -1471,6 +1734,7 @@ async function fetchRemoteData() {
     fbGet("attendance"),
     fbGet("resources"),
     fbGet("pwRequests"),
+    fbGet("signupRequests"),
     fbGet("withdrawals"),
   ]);
 
@@ -1483,6 +1747,7 @@ async function fetchRemoteData() {
     attendance: toArray(attendance, "key"),
     resources: toArray(resources).sort(sortNewest),
     pwRequests: toArray(pwRequests).sort(sortNewest),
+    signupRequests: toArray(signupRequests).sort(sortNewest),
     withdrawals: toArray(withdrawals).sort(sortNewest),
   };
 }
@@ -1521,6 +1786,13 @@ function pickLatestMember(members) {
   return members.reduce((latest, member) => {
     if (!latest) return member;
     return isNewerMember(member, latest) ? member : latest;
+  }, null);
+}
+
+function pickLatestRequest(requests) {
+  return requests.reduce((latest, request) => {
+    if (!latest) return request;
+    return recordTime(request) > recordTime(latest) ? request : latest;
   }, null);
 }
 
@@ -1579,6 +1851,7 @@ function readLocalData() {
     attendance: readStorage(STORAGE.attendance, []),
     resources: readStorage(STORAGE.resources, []),
     pwRequests: readStorage(STORAGE.pwRequests, []),
+    signupRequests: readStorage(STORAGE.signupRequests, []),
     withdrawals: readStorage(STORAGE.withdrawals, []),
   };
 }
@@ -1592,6 +1865,7 @@ function saveLocalData(data) {
   writeStorage(STORAGE.attendance, data.attendance);
   writeStorage(STORAGE.resources, data.resources);
   writeStorage(STORAGE.pwRequests, data.pwRequests);
+  writeStorage(STORAGE.signupRequests, data.signupRequests);
   writeStorage(STORAGE.withdrawals, data.withdrawals);
 }
 
@@ -1688,6 +1962,9 @@ function genderLabel(value) {
 function recordTime(record) {
   return (
     Date.parse(record?.updatedAt || "") ||
+    Date.parse(record?.editedAt || "") ||
+    Date.parse(record?.reviewedAt || "") ||
+    Date.parse(record?.requestedAt || "") ||
     Date.parse(record?.createdAt || "") ||
     Date.parse(record?.repliedAt || "") ||
     Date.parse(record?.withdrawnAt || "") ||
@@ -1714,6 +1991,19 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("ko-KR", { year: "numeric", month: "short", day: "numeric" });
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("ko-KR", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function isEditingField() {

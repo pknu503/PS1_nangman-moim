@@ -314,49 +314,64 @@ small {
 }
 
 .club-grid {
-  grid-template-columns: repeat(3, minmax(120px, 1fr));
-  min-width: min(480px, 100%);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(560px, 100%);
+  min-width: 0;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
 }
 
 .club-grid.compact {
-  min-width: 0;
+  width: min(420px, 100%);
 }
 
 .club-image-card {
   display: grid;
-  gap: 8px;
-  min-height: 152px;
-  padding: 10px;
-  border: 2px solid transparent;
-  border-radius: 10px;
+  justify-items: center;
+  align-content: center;
+  gap: 6px;
+  min-height: 108px;
+  padding: 10px 8px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
   color: var(--club);
-  background: var(--club-bg);
-  text-align: left;
+  background: #fff;
+  text-align: center;
   overflow: hidden;
   transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
 }
 
+.club-image-card:last-child {
+  border-right: 0;
+}
+
 .club-image-card:hover,
 .club-image-card.selected {
-  border-color: var(--club);
-  box-shadow: 0 12px 28px rgba(45, 31, 31, 0.12);
-  transform: translateY(-2px);
+  background: var(--club-bg);
+  box-shadow: inset 0 0 0 2px var(--club);
+  transform: none;
 }
 
 .club-image-card img {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  border-radius: 8px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
   object-fit: cover;
   background: #fff;
+  border: 2px solid color-mix(in srgb, var(--club) 34%, #fff);
 }
 
 .club-image-card strong {
-  font-size: 15px;
+  font-size: 14px;
+  line-height: 1.2;
 }
 
 .club-image-card span {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -369,12 +384,12 @@ small {
 }
 
 .club-hero > img {
-  width: 180px;
-  max-width: 34vw;
-  aspect-ratio: 16 / 9;
-  border-radius: 10px;
+  width: 82px;
+  height: 82px;
+  max-width: 26vw;
+  border-radius: 50%;
   object-fit: cover;
-  border: 2px solid rgba(255, 255, 255, 0.9);
+  border: 3px solid color-mix(in srgb, var(--club) 35%, #fff);
 }
 
 .metrics {
@@ -521,6 +536,17 @@ label,
 .post footer {
   justify-content: space-between;
   font-size: 13px;
+}
+
+.post-edit {
+  display: grid;
+  gap: 8px;
+}
+
+.post-actions {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .post button,
@@ -699,14 +725,30 @@ th {
   .metrics,
   .two,
   .info-grid,
-  .club-grid,
   .chart-grid,
   .resource-grid {
     grid-template-columns: 1fr;
   }
 
-  .club-hero > img {
+  .club-grid,
+  .club-grid.compact {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
+  }
+
+  .club-image-card {
+    min-height: 86px;
+    padding: 8px 4px;
+  }
+
+  .club-image-card img {
+    width: 52px;
+    height: 52px;
+  }
+
+  .club-hero > img {
+    width: 70px;
+    height: 70px;
     max-width: none;
   }
 }
