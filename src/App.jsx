@@ -2488,8 +2488,8 @@ function readLocalData() {
     schedules: readStorage(STORAGE.schedules, []),
     events: readStorage(STORAGE.events, []),
     attendance: readStorage(STORAGE.attendance, []),
-    outputs: readStorage(STORAGE.outputs, []),
-    resources: readStorage(STORAGE.resources, []),
+    outputs: [],
+    resources: [],
     messages: readStorage(STORAGE.messages, []),
     messageReads: readStorage(STORAGE.messageReads, []),
     pwRequests: readStorage(STORAGE.pwRequests, []),
@@ -2505,8 +2505,8 @@ function saveLocalData(data) {
   writeStorage(STORAGE.schedules, data.schedules);
   writeStorage(STORAGE.events, data.events);
   writeStorage(STORAGE.attendance, data.attendance);
-  writeStorage(STORAGE.outputs, data.outputs);
-  writeStorage(STORAGE.resources, data.resources);
+  writeStorage(STORAGE.outputs, null);
+  writeStorage(STORAGE.resources, null);
   writeStorage(STORAGE.messages, data.messages);
   writeStorage(STORAGE.messageReads, data.messageReads);
   writeStorage(STORAGE.pwRequests, data.pwRequests);
@@ -2524,11 +2524,20 @@ function readStorage(key, fallback) {
 }
 
 function writeStorage(key, value) {
-  if (value === null || value === undefined) {
-    window.localStorage.removeItem(key);
-    return;
+  try {
+    if (value === null || value === undefined) {
+      window.localStorage.removeItem(key);
+      return;
+    }
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    console.warn(`localStorage 저장을 건너뜁니다: ${key}`, err);
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // localStorage cleanup best effort only.
+    }
   }
-  window.localStorage.setItem(key, JSON.stringify(value));
 }
 
 function toArray(value, idField = "id") {
