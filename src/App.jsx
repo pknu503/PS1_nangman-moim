@@ -45,6 +45,7 @@ const STORAGE = {
   outputs: "nm_outputs",
   resources: "nm_resources",
   messages: "nm_messages",
+  messageReads: "nm_message_reads",
   pwRequests: "nm_pwreq",
   signupRequests: "nm_signup_requests",
   withdrawals: "nm_withdrawals",
@@ -94,6 +95,7 @@ const EMPTY_DATA = {
   outputs: [],
   resources: [],
   messages: [],
+  messageReads: [],
   pwRequests: [],
   signupRequests: [],
   withdrawals: [],
@@ -153,6 +155,11 @@ export default function App() {
     : sessionUser?.clubs || [];
   const selectedClub = CLUBS[selectedClubId] || CLUBS.hora;
   const stats = useMemo(() => buildStats(data), [data]);
+  const visibleMessages = useMemo(
+    () => getVisibleMessages(data.messages || [], sessionUser, isAdmin),
+    [data.messages, isAdmin, sessionUser],
+  );
+  const unreadMessageCount = isAdmin ? 0 : visibleMessages.filter((item) => !isMessageRead(data.messageReads || [], sessionUser?.id, item.id)).length;
   const pendingPwCount = data.pwRequests.filter((req) => req.status === "pending").length;
   const pendingSignupCount = data.signupRequests.filter((req) => req.approvalStatus === "pending").length;
 
@@ -471,6 +478,26 @@ export default function App() {
     setMessage("쪽지를 보냈습니다.");
   }
 
+  async function markMessagesRead(messages) {
+    if (!sessionUser?.id || isAdmin || messages.length === 0) return;
+    const unread = messages.filter((item) => !isMessageRead(data.messageReads || [], sessionUser.id, item.id));
+    if (unread.length === 0) return;
+    const reads = unread.map((item) => ({
+      key: `${sessionUser.id}_${item.id}`,
+      memberId: sessionUser.id,
+      messageId: item.id,
+      readAt: now(),
+    }));
+    setData((current) => ({
+      ...current,
+      messageReads: reads.reduce(
+        (list, item) => upsertByKey(list, item, "key"),
+        current.messageReads || [],
+      ),
+    }));
+    await fbPatch("messageReads", Object.fromEntries(reads.map((item) => [firebaseKey(item.key), cleanFirebase(item)])));
+  }
+
   async function submitPwRequest(msg) {
     const exists = data.pwRequests.find(
       (req) => req.memberId === sessionUser.id && req.status === "pending",
@@ -646,6 +673,7 @@ export default function App() {
           <NavButton id="club" page={page} setPage={setPage} icon={Users} label="동아리" />
           {isAdmin && <NavButton id="admin" page={page} setPage={setPage} icon={ShieldCheck} label={`관리자${pendingPwCount + pendingSignupCount ? ` ${pendingPwCount + pendingSignupCount}` : ""}`} />}
           {!isAdmin && <NavButton id="profile" page={page} setPage={setPage} icon={User} label="내 정보" />}
+          {!isAdmin && <NavButton id="messages" page={page} setPage={setPage} icon={Mail} label={`쪽지함${unreadMessageCount ? ` ${unreadMessageCount}` : ""}`} highlight={unreadMessageCount > 0} />}
         </nav>
         <div className="session">
           <span>{isAdmin ? "관리자" : sessionUser?.name}</span>
@@ -711,6 +739,14 @@ export default function App() {
           saveProfile={saveProfile}
           changePassword={changePassword}
           submitPwRequest={submitPwRequest}
+        />
+      )}
+      {page === "messages" && !isAdmin && (
+        <MessagesPage
+          messages={visibleMessages}
+          messageReads={data.messageReads || []}
+          user={sessionUser}
+          markMessagesRead={markMessagesRead}
         />
       )}
       {page === "admin" && isAdmin && (
@@ -1053,6 +1089,7 @@ function CompareStats({ stats }) {
   return (
     <section className="panel">
       <h2><BarChart3 size={19} /> 동아리별 비교</h2>
+      <ComparisonSummary stats={stats} />
       <div className="compare-bars">
         {stats.map((stat) => (
           <article className="chart-card" key={stat.club.id}>
@@ -1101,6 +1138,30 @@ function CompareStats({ stats }) {
   );
 }
 
+function ComparisonSummary({ stats }) {
+  const metrics = [
+    ["회원", "members", "명"],
+    ["현역", "active", "명"],
+    ["졸업생", "graduated", "명"],
+    ["게시글", "posts", "개"],
+    ["홍보글", "promos", "개"],
+    ["성과", "outputs", "개"],
+    ["자료", "resources", "개"],
+    ["출석률", "attendanceRate", "%"],
+  ];
+
+  return (
+    <div className="comparison-summary">
+      {metrics.map(([label, key, suffix]) => (
+        <article key={key}>
+          <strong>{label}</strong>
+          <span>{formatRanking(stats, key, suffix)}</span>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub, tab, setTab, addPost, deletePost, updatePost, deletePromo, updatePromo, addSchedule, updateSchedule, deleteSchedule, addOutput, updateOutput, deleteOutput, markAttendance }) {
   const isMember = isAdmin || user.clubs?.includes(selectedClubId);
   const posts = data.posts.filter((post) => post.clubId === selectedClubId);
@@ -1127,7 +1188,7 @@ function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub,
             <button className={tab === "board" ? "active" : ""} type="button" onClick={() => setTab("board")}>게시판</button>
             <button className={tab === "promo" ? "active" : ""} type="button" onClick={() => setTab("promo")}>홍보</button>
             <button className={tab === "monthly" ? "active" : ""} type="button" onClick={() => setTab("monthly")}>월별 일정</button>
-            <button className={tab === "outputs" ? "active" : ""} type="button" onClick={() => setTab("outputs")}>동아리 성과(OUTPUT)</button>
+            <button className={tab === "outputs" ? "active" : ""} type="button" onClick={() => setTab("outputs")}>동아리 성과</button>
             <button className={tab === "event" ? "active" : ""} type="button" onClick={() => setTab("event")}>주별 이벤트</button>
             <button className={tab === "other" ? "active" : ""} type="button" onClick={() => setTab("other")}>기타</button>
             <button className={tab === "attendance" ? "active" : ""} type="button" onClick={() => setTab("attendance")}>출석</button>
@@ -1162,6 +1223,20 @@ function ClubDescription({ club }) {
     return (
       <span>
         <strong className="orange-letter">신</strong>념을 이야기하고, 아이디어로 세상을 변<strong className="orange-letter">화</strong>시키는 동아리
+      </span>
+    );
+  }
+  if (club.id === "theme") {
+    return (
+      <span>
+        틀에 얽매이지 않고 우리만의 <strong className="theme-letter">THEME</strong>를 만들어 가는 동아리
+      </span>
+    );
+  }
+  if (club.id === "hora") {
+    return (
+      <span>
+        사람과 함께, 의미 있는 시간을 나누는 <strong className="hora-letter">HORA</strong>
       </span>
     );
   }
@@ -1338,7 +1413,7 @@ function ScheduleItem({ item, canManage, updateSchedule, deleteSchedule }) {
 function OutputPanel({ outputs, canManage, addOutput, updateOutput, deleteOutput }) {
   return (
     <section className="panel">
-      <h2><Trophy size={19} /> 동아리 성과(OUTPUT)</h2>
+      <h2><Trophy size={19} /> 동아리 성과</h2>
       {canManage && <OutputComposer addOutput={addOutput} />}
       <div className="cards">
         {outputs.length === 0 ? (
@@ -1517,9 +1592,6 @@ function ProfilePage({ data, user, saveProfile, changePassword, submitPwRequest 
   const [changingPw, setChangingPw] = useState(false);
   const [requestingPw, setRequestingPw] = useState(false);
   const myRequests = data.pwRequests.filter((req) => req.memberId === user.id);
-  const myMessages = (data.messages || [])
-    .filter((item) => item.recipientId === "all" || item.recipientId === user.id)
-    .sort(sortNewest);
 
   return (
     <div className="stack">
@@ -1549,28 +1621,35 @@ function ProfilePage({ data, user, saveProfile, changePassword, submitPwRequest 
       {editing && <ProfileEditor user={user} saveProfile={saveProfile} done={() => setEditing(false)} />}
       {changingPw && <PasswordEditor changePassword={changePassword} done={() => setChangingPw(false)} />}
       {requestingPw && <PwRequestPanel requests={myRequests} submitPwRequest={submitPwRequest} />}
-      <MessageInbox messages={myMessages} />
     </div>
   );
 }
 
-function MessageInbox({ messages }) {
+function MessagesPage({ messages, messageReads, user, markMessagesRead }) {
+  useEffect(() => {
+    markMessagesRead(messages).catch(console.warn);
+  }, [messages, markMessagesRead]);
+
   return (
     <section className="panel">
       <h2><Mail size={19} /> 쪽지함</h2>
       <div className="cards">
         {messages.length === 0 ? (
           <p className="empty">받은 쪽지가 없습니다.</p>
-        ) : messages.map((message) => (
-          <article className="post" key={message.id}>
+        ) : messages.map((message) => {
+          const unread = !isMessageRead(messageReads || [], user?.id, message.id);
+          return (
+          <article className={unread ? "post unread-message" : "post"} key={message.id}>
             <div className="post-head">
               <span className="global-badge">{message.scope === "all" ? "전체" : "개별"}</span>
+              {unread && <span className="secret-badge">새 쪽지</span>}
               <strong>{message.title}</strong>
             </div>
             <p>{message.content}</p>
             <footer><span>{message.senderName} · {formatDateTime(message.createdAt)}</span></footer>
           </article>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
@@ -2236,9 +2315,9 @@ function MemberTable({ members }) {
   );
 }
 
-function NavButton({ id, page, setPage, icon: Icon, label }) {
+function NavButton({ id, page, setPage, icon: Icon, label, highlight = false }) {
   return (
-    <button className={page === id ? "active" : ""} type="button" onClick={() => setPage(id)}>
+    <button className={[page === id ? "active" : "", highlight ? "has-unread" : ""].filter(Boolean).join(" ")} type="button" onClick={() => setPage(id)}>
       <Icon size={17} />
       {label}
     </button>
@@ -2279,7 +2358,7 @@ function Bar({ label, value, max, color, suffix }) {
 }
 
 async function fetchRemoteData() {
-  const [members, posts, promos, schedules, events, attendance, outputs, resources, messages, pwRequests, signupRequests, withdrawals] = await Promise.all([
+  const [members, posts, promos, schedules, events, attendance, outputs, resources, messages, messageReads, pwRequests, signupRequests, withdrawals] = await Promise.all([
     fbGet("members"),
     fbGet("posts"),
     fbGet("promos"),
@@ -2289,6 +2368,7 @@ async function fetchRemoteData() {
     fbGet("outputs"),
     fbGet("resources"),
     fbGet("messages"),
+    fbGet("messageReads"),
     fbGet("pwRequests"),
     fbGet("signupRequests"),
     fbGet("withdrawals"),
@@ -2304,6 +2384,7 @@ async function fetchRemoteData() {
     outputs: toArray(outputs).sort(sortNewest),
     resources: toArray(resources).sort(sortNewest),
     messages: toArray(messages).sort(sortNewest),
+    messageReads: toArray(messageReads, "key"),
     pwRequests: toArray(pwRequests).sort(sortNewest),
     signupRequests: toArray(signupRequests).sort(sortNewest),
     withdrawals: toArray(withdrawals).sort(sortNewest),
@@ -2410,6 +2491,7 @@ function readLocalData() {
     outputs: readStorage(STORAGE.outputs, []),
     resources: readStorage(STORAGE.resources, []),
     messages: readStorage(STORAGE.messages, []),
+    messageReads: readStorage(STORAGE.messageReads, []),
     pwRequests: readStorage(STORAGE.pwRequests, []),
     signupRequests: readStorage(STORAGE.signupRequests, []),
     withdrawals: readStorage(STORAGE.withdrawals, []),
@@ -2426,6 +2508,7 @@ function saveLocalData(data) {
   writeStorage(STORAGE.outputs, data.outputs);
   writeStorage(STORAGE.resources, data.resources);
   writeStorage(STORAGE.messages, data.messages);
+  writeStorage(STORAGE.messageReads, data.messageReads);
   writeStorage(STORAGE.pwRequests, data.pwRequests);
   writeStorage(STORAGE.signupRequests, data.signupRequests);
   writeStorage(STORAGE.withdrawals, data.withdrawals);
@@ -2476,6 +2559,19 @@ function upsertByKey(items, item, keyField) {
   return exists ? items.map((entry) => (entry[keyField] === item[keyField] ? item : entry)) : [item, ...items];
 }
 
+function getVisibleMessages(messages, user, isAdmin) {
+  if (!user || isAdmin) return [];
+  return messages
+    .filter((item) => item.recipientId === "all" || item.recipientId === user.id)
+    .sort(sortNewest);
+}
+
+function isMessageRead(reads, memberId, messageId) {
+  if (!memberId || !messageId) return true;
+  const key = `${memberId}_${messageId}`;
+  return reads.some((item) => item.key === key || (item.memberId === memberId && item.messageId === messageId));
+}
+
 function firebaseKey(value) {
   return String(value).replace(/[.$#[\]/]/g, "_");
 }
@@ -2502,6 +2598,24 @@ function buildStats(data) {
       attendanceRate: attendance.length ? Math.round((present / attendance.length) * 100) : 0,
     };
   });
+}
+
+function formatRanking(stats, key, suffix) {
+  const sorted = [...stats].sort((a, b) => {
+    if (b[key] !== a[key]) return b[key] - a[key];
+    return a.club.name.localeCompare(b.club.name, "ko");
+  });
+  const groups = [];
+  for (const stat of sorted) {
+    const last = groups[groups.length - 1];
+    const item = `${stat.club.name}(${stat[key]}${suffix})`;
+    if (last && last.value === stat[key]) {
+      last.items.push(item);
+    } else {
+      groups.push({ value: stat[key], items: [item] });
+    }
+  }
+  return groups.map((group) => group.items.join(" = ")).join(" > ");
 }
 
 function memberLabel(member) {

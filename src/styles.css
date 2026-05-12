@@ -221,6 +221,13 @@ small {
   border-color: var(--pink) !important;
 }
 
+.topbar button.has-unread:not(.active) {
+  color: #fff;
+  background: var(--pink);
+  border-color: var(--pink);
+  box-shadow: 0 6px 16px rgba(242, 139, 139, 0.26);
+}
+
 .primary {
   display: inline-flex;
   align-items: center;
@@ -397,6 +404,16 @@ small {
 
 .orange-letter {
   color: #e56f20;
+  font-weight: 900;
+}
+
+.theme-letter {
+  color: #2f7dc6;
+  font-weight: 900;
+}
+
+.hora-letter {
+  color: #7d65b3;
   font-weight: 900;
 }
 
@@ -582,6 +599,11 @@ label,
   margin-bottom: 0;
 }
 
+.unread-message {
+  border-color: var(--pink);
+  background: var(--pink-soft);
+}
+
 .post footer {
   justify-content: space-between;
   font-size: 13px;
@@ -686,6 +708,32 @@ label.inline {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.comparison-summary {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+.comparison-summary article {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  background: var(--pink-soft);
+}
+
+.comparison-summary strong {
+  color: var(--pink);
+}
+
+.comparison-summary span {
+  color: var(--ink);
+  font-weight: 900;
 }
 
 .graph-card {
@@ -1041,6 +1089,10 @@ th {
   }
 
   .donut-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .comparison-summary article {
     grid-template-columns: 1fr;
   }
 }
