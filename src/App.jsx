@@ -1010,7 +1010,7 @@ function HomePage({ data, isAdmin, user, myClubIds, openClub, addPromo, deletePr
       <section className="hero">
         <div>
           <p>국립부경대학교 사회복지학과(PS1) 전공동아리</p>
-          <h1>낭만 있는 사복 이야기</h1>
+          <h1>낭만 있는 사복 만남과 모임</h1>
         </div>
         <div className="hero-clubs">
           <ClubImageGrid onClick={openClub} counts={data.members} />
