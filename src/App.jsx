@@ -637,6 +637,33 @@ export default function App() {
     await fbDelete(`members/${firebaseRecordKey(member, member.id)}`);
   }
 
+  async function selfWithdraw() {
+    if (!sessionUser || isAdmin) return;
+    const item = {
+      id: makeId("withdraw"),
+      memberId: sessionUser.id,
+      memberName: sessionUser.name,
+      studentYear: sessionUser.studentYear,
+      clubs: sessionUser.clubs || [],
+      status: sessionUser.status || "active",
+      reason: "본인 탈퇴",
+      withdrawnAt: now(),
+      withdrawnBy: "본인",
+    };
+    setData((current) => ({
+      ...current,
+      members: current.members.filter((member) => member.id !== sessionUser.id),
+      withdrawals: [item, ...current.withdrawals],
+    }));
+    await fbPatch("withdrawals", { [firebaseKey(item.id)]: cleanFirebase(item) });
+    await fbDelete(`members/${firebaseRecordKey(sessionUser, sessionUser.id)}`);
+    setUser(null);
+    setIsAdmin(false);
+    setAuthMode("login");
+    setPage("auth");
+    setMessage("탈퇴가 완료되었습니다.");
+  }
+
   async function deleteRecord(collection, record) {
     if (!window.confirm("삭제할까요?")) return;
     setData((current) => ({
@@ -758,6 +785,7 @@ export default function App() {
           saveProfile={saveProfile}
           changePassword={changePassword}
           submitPwRequest={submitPwRequest}
+          selfWithdraw={selfWithdraw}
         />
       )}
       {page === "messages" && !isAdmin && (
@@ -1608,10 +1636,12 @@ function AttendancePanel({ data, members, user, isAdmin, clubId, markAttendance 
   );
 }
 
-function ProfilePage({ data, user, saveProfile, changePassword, submitPwRequest }) {
+function ProfilePage({ data, user, saveProfile, changePassword, submitPwRequest, selfWithdraw }) {
   const [editing, setEditing] = useState(false);
   const [changingPw, setChangingPw] = useState(false);
   const [requestingPw, setRequestingPw] = useState(false);
+  const [confirmWithdraw, setConfirmWithdraw] = useState(false);
+  const [withdrawError, setWithdrawError] = useState("");
   const myRequests = data.pwRequests.filter((req) => req.memberId === user.id);
 
   return (
@@ -1637,11 +1667,46 @@ function ProfilePage({ data, user, saveProfile, changePassword, submitPwRequest 
           <button type="button" onClick={() => setRequestingPw(!requestingPw)}><KeyRound size={16} /> 비밀번호 찾기 요청</button>
           <button type="button" onClick={() => setChangingPw(!changingPw)}><KeyRound size={16} /> 비밀번호 변경</button>
           <button className="primary" type="button" onClick={() => setEditing(!editing)}><Pencil size={16} /> 정보 수정</button>
+          <button className="danger-button" type="button" onClick={() => { setWithdrawError(""); setConfirmWithdraw(true); }}><Trash2 size={16} /> 탈퇴</button>
         </div>
       </section>
       {editing && <ProfileEditor user={user} saveProfile={saveProfile} done={() => setEditing(false)} />}
       {changingPw && <PasswordEditor changePassword={changePassword} done={() => setChangingPw(false)} />}
       {requestingPw && <PwRequestPanel requests={myRequests} submitPwRequest={submitPwRequest} />}
+      {confirmWithdraw && (
+        <ConfirmDialog
+          title="탈퇴 확인"
+          message="탈퇴함이 정말 맞으신가요?"
+          error={withdrawError}
+          confirmLabel="예, 탈퇴합니다"
+          cancelLabel="아니오"
+          onCancel={() => setConfirmWithdraw(false)}
+          onConfirm={async () => {
+            setWithdrawError("");
+            try {
+              await selfWithdraw();
+            } catch (err) {
+              setWithdrawError(err.message || "탈퇴 처리에 실패했습니다.");
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ConfirmDialog({ title, message, error, confirmLabel, cancelLabel, onConfirm, onCancel }) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <h2 id="confirm-title">{title}</h2>
+        <p>{message}</p>
+        {error && <div className="alert error">{error}</div>}
+        <div className="button-row">
+          <button type="button" onClick={onCancel}>{cancelLabel}</button>
+          <button className="danger-button" type="button" onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </section>
     </div>
   );
 }

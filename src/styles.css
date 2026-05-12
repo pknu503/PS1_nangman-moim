@@ -221,6 +221,12 @@ small {
   border-color: var(--pink) !important;
 }
 
+.danger-button {
+  color: #fff !important;
+  background: var(--danger) !important;
+  border-color: var(--danger) !important;
+}
+
 .topbar button.has-unread:not(.active) {
   color: #fff;
   background: var(--pink);
@@ -974,6 +980,32 @@ label.inline {
 
 .message-section h3,
 .message-history h3 {
+  margin-bottom: 0;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(45, 31, 31, 0.34);
+}
+
+.confirm-dialog {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 13px;
+  padding: 22px;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 20px 58px rgba(45, 31, 31, 0.22);
+}
+
+.confirm-dialog h2,
+.confirm-dialog p {
   margin-bottom: 0;
 }
 
