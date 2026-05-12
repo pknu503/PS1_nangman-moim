@@ -393,6 +393,24 @@ export default function App() {
   }
 
   async function updateRecord(collection, record, changes) {
+    if (Array.isArray(record.groupedItems) && record.groupedItems.length > 0) {
+      const updates = record.groupedItems.map((item) => ({
+        ...item,
+        ...changes,
+        editedAt: now(),
+        updatedAt: now(),
+      }));
+      setData((current) => ({
+        ...current,
+        [collection]: (current[collection] || []).map((item) => updates.find((updated) => updated.id === item.id) || item),
+      }));
+      await fbPatch(
+        collection,
+        Object.fromEntries(updates.map((item) => [firebaseRecordKey(item, item.id), cleanFirebase(item)])),
+      );
+      return;
+    }
+
     const updated = {
       ...record,
       ...changes,
@@ -565,6 +583,60 @@ export default function App() {
     setMessage("비밀번호 찾기 요청을 관리자에게 보냈습니다.");
   }
 
+  async function submitGuestPwRequest(form) {
+    clearAlerts();
+    if (!form.name.trim()) {
+      setError("이름을 입력해주세요.");
+      return;
+    }
+    if (!form.studentYear) {
+      setError("학번을 선택해주세요.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const remote = await fetchRemoteData();
+      setData(remote);
+      const member = pickLatestMember(
+        remote.members.filter(
+          (item) =>
+            item.name === form.name.trim() &&
+            String(item.studentYear) === String(form.studentYear),
+        ),
+      );
+      const exists = remote.pwRequests.find((req) => {
+        if (req.status !== "pending") return false;
+        if (member?.id && req.memberId === member.id) return true;
+        return req.memberName === form.name.trim() && String(req.studentYear) === String(form.studentYear);
+      });
+      if (exists) {
+        setError("이미 처리 대기 중인 비밀번호 요청이 있습니다.");
+        return;
+      }
+
+      const item = {
+        id: makeId("pwreq"),
+        memberId: member?.id || "",
+        memberName: form.name.trim(),
+        studentYear: form.studentYear,
+        message: form.message.trim(),
+        status: "pending",
+        adminReply: "",
+        createdAt: now(),
+      };
+      setData((current) => ({ ...current, pwRequests: [item, ...current.pwRequests] }));
+      await fbPatch("pwRequests", { [firebaseKey(item.id)]: cleanFirebase(item) });
+      setAuthMode("login");
+      setMessage("비밀번호 요청을 관리자에게 보냈습니다. 답변은 관리자에게 문의해주세요.");
+    } catch (err) {
+      console.error(err);
+      setError("비밀번호 요청을 저장하지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function replyPwRequest(req, reply) {
     const updated = { ...req, status: "done", adminReply: reply.trim(), repliedAt: now() };
     setData((current) => ({ ...current, pwRequests: upsertById(current.pwRequests, updated) }));
@@ -691,6 +763,16 @@ export default function App() {
 
   async function deleteRecord(collection, record) {
     if (!window.confirm("삭제할까요?")) return;
+    if (Array.isArray(record.groupedItems) && record.groupedItems.length > 0) {
+      const ids = new Set(record.groupedItems.map((item) => item.id));
+      setData((current) => ({
+        ...current,
+        [collection]: current[collection].filter((item) => !ids.has(item.id)),
+      }));
+      await Promise.all(record.groupedItems.map((item) => fbDelete(`${collection}/${firebaseRecordKey(item, item.id)}`)));
+      return;
+    }
+
     setData((current) => ({
       ...current,
       [collection]: current[collection].filter((item) => item.id !== record.id && item.key !== record.key),
@@ -724,6 +806,7 @@ export default function App() {
         setMode={setAuthMode}
         login={login}
         register={register}
+        submitGuestPwRequest={submitGuestPwRequest}
         loading={loading}
         error={error}
         message={message}
@@ -855,7 +938,7 @@ export default function App() {
   );
 }
 
-function AuthScreen({ mode, setMode, login, register, loading, error, message }) {
+function AuthScreen({ mode, setMode, login, register, submitGuestPwRequest, loading, error, message }) {
   return (
     <main className="auth">
       <section className="auth-card">
@@ -870,9 +953,12 @@ function AuthScreen({ mode, setMode, login, register, loading, error, message })
         <div className="tabs">
           <button className={mode === "login" ? "active" : ""} type="button" onClick={() => setMode("login")}>로그인</button>
           <button className={mode === "register" ? "active" : ""} type="button" onClick={() => setMode("register")}>신규 가입</button>
+          <button className={mode === "pw" ? "active" : ""} type="button" onClick={() => setMode("pw")}>비번요청</button>
         </div>
         {(message || error) && <div className={error ? "alert error" : "alert"}>{error || message}</div>}
-        {mode === "login" ? <LoginForm login={login} loading={loading} /> : <RegisterForm register={register} loading={loading} />}
+        {mode === "login" && <LoginForm login={login} loading={loading} />}
+        {mode === "register" && <RegisterForm register={register} loading={loading} />}
+        {mode === "pw" && <GuestPwRequestForm submitGuestPwRequest={submitGuestPwRequest} loading={loading} />}
       </section>
     </main>
   );
@@ -921,6 +1007,27 @@ function PasswordInput({ value, onChange, placeholder, maxLength = 8 }) {
         {visible ? <EyeOff size={18} /> : <Eye size={18} />}
       </button>
     </div>
+  );
+}
+
+function GuestPwRequestForm({ submitGuestPwRequest, loading }) {
+  const [form, setForm] = useState({ name: "", studentYear: "", message: "" });
+  return (
+    <form className="form" onSubmit={(event) => { event.preventDefault(); submitGuestPwRequest(form); }}>
+      <label>
+        이름
+        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="실명 입력" />
+      </label>
+      <label>
+        학번
+        <select value={form.studentYear} onChange={(event) => setForm({ ...form, studentYear: event.target.value })}>
+          <option value="">선택</option>
+          {YEARS.map((year) => <option key={year} value={year}>{year}학번</option>)}
+        </select>
+      </label>
+      <textarea value={form.message} onChange={(event) => setForm({ ...form, message: event.target.value })} placeholder="관리자에게 전달할 메시지" />
+      <button className="primary" disabled={loading} type="submit">비밀번호 요청하기</button>
+    </form>
   );
 }
 
@@ -1003,14 +1110,16 @@ function RegisterForm({ register, loading }) {
 
 function HomePage({ data, isAdmin, user, myClubIds, openClub, addPromo, deletePromo, updatePromo }) {
   const writableClubs = isAdmin ? CLUB_LIST : CLUB_LIST.filter((club) => user.clubs?.includes(club.id));
-  const visiblePromos = isAdmin ? data.promos : data.promos.filter((promo) => myClubIds.includes(promo.clubId));
+  const visiblePromos = getHomePromos(
+    isAdmin ? data.promos : data.promos.filter((promo) => myClubIds.includes(promo.clubId)),
+  );
 
   return (
     <div className="stack">
       <section className="hero">
         <div>
           <p>국립부경대학교 사회복지학과(PS1) 전공동아리</p>
-          <h1>낭만 있는 사복 만남과 모임</h1>
+          <h1>낭만 있는 사복 만남</h1>
         </div>
         <div className="hero-clubs">
           <ClubImageGrid onClick={openClub} counts={data.members} />
@@ -1060,6 +1169,42 @@ function PromoComposer({ writableClubs, addPromo }) {
   );
 }
 
+function getHomePromos(promos) {
+  const groups = new Map();
+  const result = [];
+
+  for (const promo of promos) {
+    if (!promo.isGlobal) {
+      result.push(promo);
+      continue;
+    }
+
+    const timeKey = String(promo.createdAt || "").slice(0, 16);
+    const key = [
+      promo.title || "",
+      promo.content || "",
+      promo.authorId || "",
+      timeKey,
+    ].join("__");
+    const group = groups.get(key);
+    if (group) {
+      group.groupedItems.push(promo);
+      group.globalClubIds = Array.from(new Set([...group.globalClubIds, promo.clubId]));
+      continue;
+    }
+
+    const grouped = {
+      ...promo,
+      groupedItems: [promo],
+      globalClubIds: [promo.clubId],
+    };
+    groups.set(key, grouped);
+    result.push(grouped);
+  }
+
+  return result.sort(sortNewest);
+}
+
 function IntegratedPage({ data, stats, tab, setTab, loading, refresh }) {
   return (
     <div className="stack">
@@ -1103,7 +1248,7 @@ function OverviewStats({ data, stats }) {
               <ClubBadge clubId={stat.club.id} />
               <Bar label="회원" value={stat.members} max={Math.max(1, ...stats.map((s) => s.members))} color={stat.club.color} suffix="명" />
               <Bar label="게시물" value={stat.posts} max={Math.max(1, ...stats.map((s) => s.posts))} color={stat.club.color} suffix="개" />
-              <Bar label="출석률" value={stat.attendanceRate} max={100} color={stat.club.color} suffix="%" />
+              <Bar label="성과" value={stat.outputs} max={Math.max(1, ...stats.map((s) => s.outputs))} color={stat.club.color} suffix="개" />
             </article>
           ))}
         </div>
@@ -2421,8 +2566,12 @@ function PostCard({ post, isAdmin, currentUser, deletePost, updatePost, isPromo 
   return (
     <article className="post">
       <div className="post-head">
-        <ClubBadge clubId={post.clubId} />
-        {post.isGlobal && <span className="global-badge">전체공지</span>}
+        {post.globalClubIds ? (
+          post.globalClubIds.map((clubId) => <ClubBadge key={clubId} clubId={clubId} />)
+        ) : (
+          <ClubBadge clubId={post.clubId} />
+        )}
+        {post.isGlobal && <span className="global-badge">{post.globalClubIds?.length ? `${post.globalClubIds.length}동아리 전체공지` : "전체공지"}</span>}
         {post.isAnon && <span className="secret-badge">익명</span>}
       </div>
       {editing ? (
