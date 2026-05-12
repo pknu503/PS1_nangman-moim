@@ -478,6 +478,25 @@ export default function App() {
     setMessage("쪽지를 보냈습니다.");
   }
 
+  async function sendAdminMessage(form) {
+    if (!sessionUser?.id || !form.content.trim()) return;
+    const item = {
+      id: makeId("message"),
+      recipientId: "admin",
+      recipientName: "관리자",
+      scope: "toAdmin",
+      title: form.title.trim() || "관리자에게 보낸 쪽지",
+      content: form.content.trim(),
+      senderId: sessionUser.id,
+      senderName: memberLabel(sessionUser),
+      senderStudentYear: sessionUser.studentYear,
+      createdAt: now(),
+    };
+    setData((current) => ({ ...current, messages: [item, ...current.messages] }));
+    await fbPatch("messages", { [firebaseKey(item.id)]: cleanFirebase(item) });
+    setMessage("관리자에게 쪽지를 보냈습니다.");
+  }
+
   async function markMessagesRead(messages) {
     if (!sessionUser?.id || isAdmin || messages.length === 0) return;
     const unread = messages.filter((item) => !isMessageRead(data.messageReads || [], sessionUser.id, item.id));
@@ -744,8 +763,10 @@ export default function App() {
       {page === "messages" && !isAdmin && (
         <MessagesPage
           messages={visibleMessages}
+          sentMessages={(data.messages || []).filter((item) => item.senderId === sessionUser.id && item.recipientId === "admin").sort(sortNewest)}
           messageReads={data.messageReads || []}
           user={sessionUser}
+          sendAdminMessage={sendAdminMessage}
           markMessagesRead={markMessagesRead}
         />
       )}
@@ -1625,33 +1646,75 @@ function ProfilePage({ data, user, saveProfile, changePassword, submitPwRequest 
   );
 }
 
-function MessagesPage({ messages, messageReads, user, markMessagesRead }) {
+function MessagesPage({ messages, sentMessages, messageReads, user, sendAdminMessage, markMessagesRead }) {
+  const [form, setForm] = useState({ title: "", content: "" });
+  const [error, setError] = useState("");
+
   useEffect(() => {
     markMessagesRead(messages).catch(console.warn);
   }, [messages, markMessagesRead]);
 
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+    try {
+      await sendAdminMessage(form);
+      setForm({ title: "", content: "" });
+    } catch (err) {
+      setError(err.message || "쪽지를 보내지 못했습니다.");
+    }
+  }
+
   return (
-    <section className="panel">
-      <h2><Mail size={19} /> 쪽지함</h2>
-      <div className="cards">
-        {messages.length === 0 ? (
-          <p className="empty">받은 쪽지가 없습니다.</p>
-        ) : messages.map((message) => {
-          const unread = !isMessageRead(messageReads || [], user?.id, message.id);
-          return (
-          <article className={unread ? "post unread-message" : "post"} key={message.id}>
-            <div className="post-head">
-              <span className="global-badge">{message.scope === "all" ? "전체" : "개별"}</span>
-              {unread && <span className="secret-badge">새 쪽지</span>}
-              <strong>{message.title}</strong>
-            </div>
-            <p>{message.content}</p>
-            <footer><span>{message.senderName} · {formatDateTime(message.createdAt)}</span></footer>
-          </article>
-          );
-        })}
-      </div>
-    </section>
+    <div className="stack">
+      <section className="panel">
+        <h2><Send size={19} /> 관리자에게 쪽지 보내기</h2>
+        {error && <div className="alert error">{error}</div>}
+        <form className="form" onSubmit={submit}>
+          <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="쪽지 제목" />
+          <textarea value={form.content} onChange={(event) => setForm({ ...form, content: event.target.value })} placeholder="관리자에게 보낼 내용" />
+          <button className="primary" type="submit"><Send size={17} /> 보내기</button>
+        </form>
+      </section>
+      <section className="panel">
+        <h2><Mail size={19} /> 받은 쪽지함</h2>
+        <div className="cards">
+          {messages.length === 0 ? (
+            <p className="empty">받은 쪽지가 없습니다.</p>
+          ) : messages.map((message) => {
+            const unread = !isMessageRead(messageReads || [], user?.id, message.id);
+            return (
+            <article className={unread ? "post unread-message" : "post"} key={message.id}>
+              <div className="post-head">
+                <span className="global-badge">{message.scope === "all" ? "전체" : "개별"}</span>
+                {unread && <span className="secret-badge">새 쪽지</span>}
+                <strong>{message.title}</strong>
+              </div>
+              <p>{message.content}</p>
+              <footer><span>{message.senderName} · {formatDateTime(message.createdAt)}</span></footer>
+            </article>
+            );
+          })}
+        </div>
+      </section>
+      <section className="panel">
+        <h2><Mail size={19} /> 관리자에게 보낸 쪽지</h2>
+        <div className="cards">
+          {sentMessages.length === 0 ? (
+            <p className="empty">관리자에게 보낸 쪽지가 없습니다.</p>
+          ) : sentMessages.map((message) => (
+            <article className="post" key={message.id}>
+              <div className="post-head">
+                <span className="global-badge">관리자</span>
+                <strong>{message.title}</strong>
+              </div>
+              <p>{message.content}</p>
+              <footer><span>{formatDateTime(message.createdAt)}</span></footer>
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -2018,7 +2081,8 @@ function PwReplyRow({ req, member, replyPwRequest }) {
 function AdminMessages({ members, messages = [], sendMessage, deleteMessage }) {
   const [form, setForm] = useState({ recipientId: "all", title: "", content: "" });
   const [error, setError] = useState("");
-  const sorted = [...messages].sort(sortNewest);
+  const incoming = messages.filter((message) => message.recipientId === "admin").sort(sortNewest);
+  const sent = messages.filter((message) => message.senderId === "admin").sort(sortNewest);
 
   async function submit(event) {
     event.preventDefault();
@@ -2048,10 +2112,31 @@ function AdminMessages({ members, messages = [], sendMessage, deleteMessage }) {
         <textarea value={form.content} onChange={(event) => setForm({ ...form, content: event.target.value })} placeholder="쪽지 내용" />
         <button className="primary" type="submit"><Send size={17} /> 보내기</button>
       </form>
+      <section className="message-section">
+        <h3>학생이 보낸 쪽지</h3>
+        <div className="cards">
+          {incoming.length === 0 ? (
+            <p className="empty">학생이 보낸 쪽지가 없습니다.</p>
+          ) : incoming.map((message) => (
+            <article className="post" key={message.id}>
+              <div className="post-head">
+                <span className="global-badge">학생</span>
+                <strong>{message.title}</strong>
+              </div>
+              <p>{message.content}</p>
+              <footer>
+                <span>{message.senderName} · {formatDateTime(message.createdAt)}</span>
+                <button type="button" onClick={() => deleteMessage(message)}><Trash2 size={15} /> 삭제</button>
+              </footer>
+            </article>
+          ))}
+        </div>
+      </section>
       <div className="cards message-history">
-        {sorted.length === 0 ? (
+        <h3>관리자가 보낸 쪽지</h3>
+        {sent.length === 0 ? (
           <p className="empty">보낸 쪽지가 없습니다.</p>
-        ) : sorted.map((message) => (
+        ) : sent.map((message) => (
           <article className="post" key={message.id}>
             <div className="post-head">
               <span className="global-badge">{message.scope === "all" ? "전체" : "개별"}</span>
