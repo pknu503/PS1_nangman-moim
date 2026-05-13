@@ -892,6 +892,27 @@ export default function App() {
     await fbDelete(`${collection}/${firebaseRecordKey(record, record.id || record.key)}`);
   }
 
+  async function downloadExcelData() {
+    clearAlerts();
+    if (!isAdmin) {
+      setError("엑셀 다운로드는 관리자만 사용할 수 있습니다.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const latest = await fetchRemoteData();
+      setData(latest);
+      downloadAppDataExcel(latest, buildStats(latest));
+      setMessage("최신 데이터를 엑셀 파일로 다운로드했습니다.");
+    } catch (err) {
+      console.error(err);
+      downloadAppDataExcel(data, stats);
+      setMessage("Firebase 최신 조회에 실패해 현재 화면에 저장된 데이터로 엑셀 파일을 다운로드했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function openClub(clubId) {
     setSelectedClubId(clubId);
     setClubTab("board");
@@ -1056,6 +1077,9 @@ export default function App() {
           canApproveSignup={isAdmin}
           canForceWithdraw={isAdmin}
           canDelegatePwRequest={isAdmin}
+          canDownloadExcel={isAdmin}
+          downloadExcelData={downloadExcelData}
+          excelLoading={loading}
           refresh={() => refreshData()}
         />
       )}
@@ -2301,7 +2325,7 @@ function PwRequestPanel({ requests, submitPwRequest }) {
   );
 }
 
-function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, approveSignupRequest, rejectSignupRequest, restoreSignupRequest, updateRecord, forceWithdraw, toggleSubAdmin, sendPwRequestToSubAdmin, canManageSubAdmins, canApproveSignup, canForceWithdraw, canDelegatePwRequest, refresh }) {
+function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, approveSignupRequest, rejectSignupRequest, restoreSignupRequest, updateRecord, forceWithdraw, toggleSubAdmin, sendPwRequestToSubAdmin, canManageSubAdmins, canApproveSignup, canForceWithdraw, canDelegatePwRequest, canDownloadExcel, downloadExcelData, excelLoading, refresh }) {
   const pendingPwCount = data.pwRequests.filter((req) => req.status === "pending").length;
   const pendingSignupCount = data.signupRequests.filter((req) => req.approvalStatus === "pending").length;
   const activeTab = !canApproveSignup && tab === "signup" ? "members" : tab;
@@ -2309,7 +2333,14 @@ function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyP
     <div className="stack">
       <section className="toolbar">
         <h1>관리자 패널</h1>
-        <button type="button" onClick={refresh}><RefreshCw size={16} /> 새로고침</button>
+        <div className="toolbar-actions">
+          {canDownloadExcel && (
+            <button className="primary" disabled={excelLoading} type="button" onClick={downloadExcelData}>
+              <Download size={16} /> 엑셀 다운로드
+            </button>
+          )}
+          <button type="button" onClick={refresh}><RefreshCw size={16} /> 새로고침</button>
+        </div>
       </section>
       <div className="tabs">
         <button className={activeTab === "members" ? "active" : ""} type="button" onClick={() => setTab("members")}>회원</button>
@@ -3079,6 +3110,346 @@ function Bar({ label, value, max, color, suffix }) {
       <div className="bar"><span style={{ width: `${width}%`, background: color }} /></div>
     </div>
   );
+}
+
+function downloadAppDataExcel(data, stats) {
+  const members = data.members || [];
+  const generatedAt = formatDateTime(now());
+  const sheets = [
+    {
+      name: "요약",
+      columns: [
+        col("항목", "label"),
+        col("값", "value"),
+      ],
+      rows: [
+        { label: "생성일", value: generatedAt },
+        { label: "회원 수", value: members.length },
+        { label: "게시글 수", value: (data.posts || []).length },
+        { label: "홍보글 수", value: (data.promos || []).length },
+        { label: "일정 수", value: (data.schedules || []).length },
+        { label: "성과 수", value: (data.outputs || []).length },
+        { label: "자료 수", value: (data.resources || []).length },
+        { label: "쪽지 수", value: (data.messages || []).length },
+        { label: "비밀번호 요청 수", value: (data.pwRequests || []).length },
+      ],
+    },
+    {
+      name: "회원",
+      columns: [
+        col("이름", "name"),
+        col("학번", "studentYear"),
+        col("성별", "gender", genderLabel),
+        col("상태", "status", statusLabel),
+        col("권한", "", (member) => isSubAdminMember(member) ? "부관리자" : "일반회원"),
+        col("소속 동아리", "clubs", clubNames),
+        col("비밀번호", "password"),
+        col("가입일", "joinedAt", formatDateTime),
+        col("수정일", "updatedAt", formatDateTime),
+        col("회원 ID", "id"),
+      ],
+      rows: members,
+    },
+    {
+      name: "게시글",
+      columns: [
+        col("동아리", "clubId", clubName),
+        col("작성자", "authorName"),
+        col("익명 여부", "isAnon", boolText),
+        col("내용", "content"),
+        col("좋아요 수", "", reactionCount),
+        col("좋아요 명단", "", reactionText),
+        col("작성일", "createdAt", formatDateTime),
+        col("수정일", "editedAt", formatDateTime),
+      ],
+      rows: data.posts || [],
+    },
+    {
+      name: "홍보",
+      columns: [
+        col("동아리", "clubId", clubName),
+        col("전체공지", "isGlobal", boolText),
+        col("제목", "title"),
+        col("내용", "content"),
+        col("작성자", "authorName"),
+        col("좋아요 수", "", reactionCount),
+        col("좋아요 명단", "", reactionText),
+        col("작성일", "createdAt", formatDateTime),
+        col("수정일", "editedAt", formatDateTime),
+      ],
+      rows: data.promos || [],
+    },
+    {
+      name: "일정_한줄문구",
+      columns: [
+        col("동아리", "clubId", clubName),
+        col("구분", "kind", scheduleKindLabel),
+        col("제목", "title"),
+        col("날짜", "date", formatDate),
+        col("메모", "description"),
+        col("작성자", "authorName"),
+        col("좋아요 수", "", reactionCount),
+        col("좋아요 명단", "", reactionText),
+        col("작성일", "createdAt", formatDateTime),
+      ],
+      rows: data.schedules || [],
+    },
+    {
+      name: "이벤트",
+      columns: [
+        col("동아리", "clubId", clubName),
+        col("제목", "title"),
+        col("날짜", "date", formatDate),
+        col("메모", "description"),
+        col("작성자", "authorName"),
+        col("작성일", "createdAt", formatDateTime),
+      ],
+      rows: data.events || [],
+    },
+    {
+      name: "출석",
+      columns: [
+        col("동아리", "clubId", clubName),
+        col("회원", "memberId", (id) => memberById(members, id)),
+        col("날짜", "date", formatDate),
+        col("출석 상태", "status", attendanceStatusLabel),
+        col("수정일", "updatedAt", formatDateTime),
+      ],
+      rows: data.attendance || [],
+    },
+    {
+      name: "성과",
+      columns: [
+        col("동아리", "clubId", clubName),
+        col("제목", "title"),
+        col("내용", "content"),
+        col("첨부파일명", "fileName"),
+        col("첨부형식", "fileType"),
+        col("첨부", "fileUrl", fileValue),
+        col("작성자", "authorName"),
+        col("좋아요 수", "", reactionCount),
+        col("좋아요 명단", "", reactionText),
+        col("작성일", "createdAt", formatDateTime),
+      ],
+      rows: data.outputs || [],
+    },
+    {
+      name: "자료",
+      columns: [
+        col("동아리", "clubId", clubName),
+        col("유형", "type"),
+        col("제목", "title"),
+        col("메모/링크", "note"),
+        col("이미지", "imageUrl", fileValue),
+        col("작성일", "createdAt", formatDateTime),
+      ],
+      rows: data.resources || [],
+    },
+    {
+      name: "쪽지",
+      columns: [
+        col("구분", "scope", messageScopeLabel),
+        col("제목", "title"),
+        col("내용", "content"),
+        col("보낸 사람", "senderName"),
+        col("받는 사람", "recipientName"),
+        col("관련 비번요청 ID", "relatedPwRequestId"),
+        col("작성일", "createdAt", formatDateTime),
+      ],
+      rows: data.messages || [],
+    },
+    {
+      name: "비밀번호요청",
+      columns: [
+        col("이름", "memberName"),
+        col("학번", "studentYear"),
+        col("상태", "status", pwRequestStatusLabel),
+        col("확인 비밀번호", "", (req) => findPwRequestMember(req, members)?.password || req.resolvedPassword || ""),
+        col("요청 메시지", "message"),
+        col("관리자 답변", "adminReply"),
+        col("요청일", "createdAt", formatDateTime),
+        col("답변일", "repliedAt", formatDateTime),
+      ],
+      rows: data.pwRequests || [],
+    },
+    {
+      name: "가입신청",
+      columns: [
+        col("이름", "name"),
+        col("학번", "studentYear"),
+        col("성별", "gender", genderLabel),
+        col("상태", "status", statusLabel),
+        col("소속 동아리", "clubs", clubNames),
+        col("비밀번호", "password"),
+        col("승인 상태", "approvalStatus", approvalStatusLabel),
+        col("거부 사유", "rejectReason"),
+        col("신청일", "requestedAt", formatDateTime),
+        col("처리일", "reviewedAt", formatDateTime),
+      ],
+      rows: data.signupRequests || [],
+    },
+    {
+      name: "탈퇴이력",
+      columns: [
+        col("이름", "memberName"),
+        col("학번", "studentYear"),
+        col("소속 동아리", "clubs", clubNames),
+        col("상태", "status", statusLabel),
+        col("사유", "reason"),
+        col("처리자", "withdrawnBy"),
+        col("탈퇴일", "withdrawnAt", formatDateTime),
+      ],
+      rows: data.withdrawals || [],
+    },
+    {
+      name: "통계",
+      columns: [
+        col("동아리", "club", (club) => club.name),
+        col("회원", "members"),
+        col("현역", "active"),
+        col("졸업생", "graduated"),
+        col("지도교수", "professors"),
+        col("게시글", "posts"),
+        col("홍보글", "promos"),
+        col("성과", "outputs"),
+        col("자료", "resources"),
+        col("출석률", "attendanceRate", (value) => `${value}%`),
+      ],
+      rows: stats,
+    },
+  ];
+
+  const xml = buildExcelXml(sheets);
+  const blob = new Blob(["\ufeff", xml], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = `nangman-moim-data-${todayKey()}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function col(label, key, format) {
+  return { label, key, format };
+}
+
+function buildExcelXml(sheets) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Styles>
+  <Style ss:ID="Header"><Font ss:Bold="1"/><Interior ss:Color="#f28b8b" ss:Pattern="Solid"/></Style>
+ </Styles>
+ ${sheets.map(sheetXml).join("")}
+</Workbook>`;
+}
+
+function sheetXml(sheet) {
+  const header = `<Row>${sheet.columns.map((column) => excelCell(column.label, "Header")).join("")}</Row>`;
+  const rows = sheet.rows.map((row) => (
+    `<Row>${sheet.columns.map((column) => excelCell(excelValue(row, column))).join("")}</Row>`
+  )).join("");
+  return `<Worksheet ss:Name="${escapeXmlAttribute(sheet.name.slice(0, 31))}"><Table>${header}${rows}</Table></Worksheet>`;
+}
+
+function excelValue(row, column) {
+  const raw = column.key ? row?.[column.key] : row;
+  return column.format ? column.format(raw, row) : raw;
+}
+
+function excelCell(value, styleId = "") {
+  const style = styleId ? ` ss:StyleID="${styleId}"` : "";
+  return `<Cell${style}><Data ss:Type="String">${escapeXml(normalizeExcelValue(value))}</Data></Cell>`;
+}
+
+function normalizeExcelValue(value) {
+  if (value === null || value === undefined || value === "-") return "";
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "boolean") return boolText(value);
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function escapeXml(value) {
+  return String(value)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, " ")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeXmlAttribute(value) {
+  return escapeXml(value).replace(/"/g, "&quot;");
+}
+
+function clubName(clubId) {
+  return CLUBS[clubId]?.name || clubId || "";
+}
+
+function clubNames(clubIds) {
+  return Array.isArray(clubIds) ? clubIds.map(clubName).join(", ") : clubName(clubIds);
+}
+
+function memberById(members, id) {
+  const member = members.find((item) => item.id === id);
+  return member ? memberLabel(member) : id || "";
+}
+
+function boolText(value) {
+  return value ? "예" : "아니오";
+}
+
+function reactionCount(record) {
+  return getReactionEntries(record).length;
+}
+
+function reactionText(record) {
+  return getReactionEntries(record)
+    .map(([, reaction]) => `${reaction.userName || reaction.userId || "이름 없음"}:${getReactionDefinition(reaction.type).label}`)
+    .join(", ");
+}
+
+function fileValue(value) {
+  if (!value) return "";
+  const text = String(value);
+  return text.startsWith("data:") ? "첨부 데이터 있음" : text;
+}
+
+function scheduleKindLabel(value) {
+  if (value === "monthly") return "월별 일정";
+  if (value === "lineMemo") return "한줄 문구";
+  return value || "";
+}
+
+function attendanceStatusLabel(value) {
+  if (value === "present") return "출석";
+  if (value === "late") return "지각";
+  if (value === "absent") return "결석";
+  return value || "";
+}
+
+function messageScopeLabel(value) {
+  if (value === "all") return "전체";
+  if (value === "member") return "개별";
+  if (value === "toAdmin") return "관리자에게";
+  if (value === "pwRequest") return "비밀번호 요청";
+  if (value === "pwRequestDelegate") return "부관리자 전달";
+  return value || "";
+}
+
+function pwRequestStatusLabel(value) {
+  return value === "done" ? "완료" : "대기";
+}
+
+function approvalStatusLabel(value) {
+  if (value === "approved") return "승인";
+  if (value === "rejected") return "거부";
+  return "대기";
 }
 
 function mergeReactions(records) {

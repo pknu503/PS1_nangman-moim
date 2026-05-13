@@ -336,6 +336,13 @@ small {
   padding: 26px;
 }
 
+.toolbar-actions {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .hero-clubs {
   display: grid;
   gap: 9px;
