@@ -624,13 +624,22 @@ export default function App() {
       memberId: sessionUser.id,
       memberName: sessionUser.name,
       studentYear: sessionUser.studentYear,
+      resolvedPassword: sessionUser.password || "",
       message: msg.trim(),
       status: "pending",
       adminReply: "",
       createdAt: now(),
     };
-    setData((current) => ({ ...current, pwRequests: [item, ...current.pwRequests] }));
-    await fbPatch("pwRequests", { [firebaseKey(item.id)]: cleanFirebase(item) });
+    const adminMessage = buildPwRequestAdminMessage(item, sessionUser);
+    setData((current) => ({
+      ...current,
+      pwRequests: [item, ...current.pwRequests],
+      messages: [adminMessage, ...(current.messages || [])],
+    }));
+    await Promise.all([
+      fbPatch("pwRequests", { [firebaseKey(item.id)]: cleanFirebase(item) }),
+      fbPatch("messages", { [firebaseKey(adminMessage.id)]: cleanFirebase(adminMessage) }),
+    ]);
     setMessage("비밀번호 찾기 요청을 관리자에게 보냈습니다.");
   }
 
@@ -671,13 +680,22 @@ export default function App() {
         memberId: member?.id || "",
         memberName: form.name.trim(),
         studentYear: form.studentYear,
+        resolvedPassword: member?.password || "",
         message: form.message.trim(),
         status: "pending",
         adminReply: "",
         createdAt: now(),
       };
-      setData((current) => ({ ...current, pwRequests: [item, ...current.pwRequests] }));
-      await fbPatch("pwRequests", { [firebaseKey(item.id)]: cleanFirebase(item) });
+      const adminMessage = buildPwRequestAdminMessage(item, member);
+      setData((current) => ({
+        ...current,
+        pwRequests: [item, ...current.pwRequests],
+        messages: [adminMessage, ...(current.messages || [])],
+      }));
+      await Promise.all([
+        fbPatch("pwRequests", { [firebaseKey(item.id)]: cleanFirebase(item) }),
+        fbPatch("messages", { [firebaseKey(adminMessage.id)]: cleanFirebase(adminMessage) }),
+      ]);
       setAuthMode("login");
       setMessage("비밀번호 요청을 관리자에게 보냈습니다. 답변은 관리자에게 문의해주세요.");
     } catch (err) {
@@ -2509,7 +2527,7 @@ function AdminPwRequests({ requests, members, replyPwRequest }) {
       <h2><KeyRound size={19} /> 비밀번호 요청</h2>
       <div className="cards">
         {requests.map((req) => {
-          const member = members.find((m) => m.id === req.memberId);
+          const member = findPwRequestMember(req, members);
           return <PwReplyRow key={req.id} req={req} member={member} replyPwRequest={replyPwRequest} />;
         })}
       </div>
@@ -2518,12 +2536,21 @@ function AdminPwRequests({ requests, members, replyPwRequest }) {
 }
 
 function PwReplyRow({ req, member, replyPwRequest }) {
-  const [reply, setReply] = useState(member?.password ? `현재 비밀번호는 ${member.password} 입니다.` : "");
+  const password = member?.password || req.resolvedPassword || "";
+  const [reply, setReply] = useState(password ? `현재 비밀번호는 ${password} 입니다.` : "");
+
+  useEffect(() => {
+    if (req.status === "pending" && password && !reply.trim()) {
+      setReply(`현재 비밀번호는 ${password} 입니다.`);
+    }
+  }, [password, reply, req.status]);
+
   return (
     <article className="post">
       <strong>{req.memberName} ({req.studentYear}) · {req.status === "pending" ? "대기" : "완료"}</strong>
       {req.message && <p>요청 메시지: {req.message}</p>}
-      <p>실제 비밀번호: <strong>{member?.password || "탈퇴/미확인 회원"}</strong></p>
+      <p>관리자 확인 비밀번호: <strong>{password || "탈퇴/미확인 회원"}</strong></p>
+      {!member && req.resolvedPassword && <small className="notice">회원 목록에서 찾지 못해 요청 당시 저장된 비밀번호를 표시합니다.</small>}
       {req.status === "pending" ? (
         <div className="inline-form">
           <input value={reply} onChange={(event) => setReply(event.target.value)} placeholder="학생에게 전달할 답변" />
@@ -2584,7 +2611,7 @@ function AdminMessages({ members, messages = [], messageReads = [], readerId = "
               onClick={() => markAdminMessagesRead?.([message]).catch(console.warn)}
             >
               <div className="post-head">
-                <span className="global-badge">학생</span>
+                <span className="global-badge">{message.senderRole === "system" ? "비번요청" : "학생"}</span>
                 {unread && <span className="secret-badge">새 쪽지</span>}
                 <strong>{message.title}</strong>
               </div>
@@ -3213,6 +3240,46 @@ function isSameRecord(left, right) {
   if (left?.id && right?.id) return left.id === right.id;
   if (left?.key && right?.key) return left.key === right.key;
   return false;
+}
+
+function buildPwRequestAdminMessage(req, member) {
+  const password = member?.password || req.resolvedPassword || "확인 불가";
+  const memberText = `${req.memberName}(${String(req.studentYear || "").slice(2)})`;
+  const content = [
+    `${memberText} 학생의 비밀번호 요청입니다.`,
+    `현재 비밀번호: ${password}`,
+    req.message ? `요청 메시지: ${req.message}` : "",
+    password === "확인 불가" ? "회원 목록에서 이름+학번을 찾지 못했습니다. 회원 정보를 확인해주세요." : "학생에게 비밀번호를 안내해주세요.",
+  ].filter(Boolean).join("\n");
+
+  return {
+    id: makeId("message"),
+    recipientId: "admin",
+    recipientName: "관리자",
+    scope: "pwRequest",
+    title: `비밀번호 요청: ${memberText}`,
+    content,
+    senderId: "system_pw_request",
+    senderName: "비밀번호 요청 시스템",
+    senderRole: "system",
+    relatedPwRequestId: req.id,
+    createdAt: req.createdAt || now(),
+  };
+}
+
+function findPwRequestMember(req, members) {
+  if (!req) return null;
+  if (req.memberId) {
+    const byId = members.find((member) => member.id === req.memberId);
+    if (byId) return byId;
+  }
+  return pickLatestMember(
+    members.filter(
+      (member) =>
+        member.name === req.memberName &&
+        String(member.studentYear) === String(req.studentYear),
+    ),
+  );
 }
 
 function getVisibleMessages(messages, user, isAdmin) {

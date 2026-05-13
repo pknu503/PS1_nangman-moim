@@ -1174,6 +1174,11 @@ label.inline {
   margin-bottom: 0;
 }
 
+.message-section .post p,
+.message-history .post p {
+  white-space: pre-line;
+}
+
 .line-memo-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
