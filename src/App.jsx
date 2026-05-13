@@ -9,6 +9,7 @@ import {
   Eye,
   EyeOff,
   FileText,
+  Heart,
   Home,
   Image as ImageIcon,
   KeyRound,
@@ -22,6 +23,8 @@ import {
   Save,
   Send,
   ShieldCheck,
+  Smile,
+  ThumbsUp,
   Trash2,
   Trophy,
   User,
@@ -85,6 +88,11 @@ const CLUBS = {
 };
 
 const CLUB_LIST = Object.values(CLUBS);
+const REACTION_TYPES = [
+  { type: "heart", label: "하트", Icon: Heart },
+  { type: "smile", label: "웃음", Icon: Smile },
+  { type: "thumb", label: "엄지척", Icon: ThumbsUp },
+];
 const EMPTY_DATA = {
   members: [],
   posts: [],
@@ -369,6 +377,7 @@ export default function App() {
       authorName: anonymous ? "익명" : sessionUser.name,
       isAnon: anonymous,
       content: content.trim(),
+      reactions: {},
       createdAt: now(),
     };
     setData((current) => ({ ...current, posts: [item, ...current.posts] }));
@@ -385,6 +394,7 @@ export default function App() {
       authorId: sessionUser.id,
       authorName: sessionUser.name,
       isGlobal: form.clubId === "all",
+      reactions: {},
       createdAt: now(),
     }));
     if (!form.title.trim() || !form.content.trim()) return;
@@ -424,6 +434,36 @@ export default function App() {
     await fbPatch(collection, { [firebaseRecordKey(record, record.id)]: cleanFirebase(updated) });
   }
 
+  async function toggleReaction(collection, record, reactionType) {
+    if (!sessionUser?.id || !REACTION_TYPES.some((item) => item.type === reactionType)) return;
+    const userId = isAdmin ? "admin" : sessionUser.id;
+    const userName = isAdmin ? "관리자" : memberLabel(sessionUser);
+    const targets = Array.isArray(record.groupedItems) && record.groupedItems.length > 0
+      ? record.groupedItems
+      : [record];
+    const selected = record.reactions?.[userId]?.type === reactionType;
+    const updatedAt = now();
+    const updates = targets.map((item) => {
+      const reactions = { ...(item.reactions || {}) };
+      if (selected) {
+        delete reactions[userId];
+      } else {
+        reactions[userId] = { type: reactionType, userId, userName, reactedAt: updatedAt };
+      }
+      return { ...item, reactions, updatedAt };
+    });
+    setData((current) => ({
+      ...current,
+      [collection]: (current[collection] || []).map((item) => (
+        updates.find((updated) => isSameRecord(updated, item)) || item
+      )),
+    }));
+    await fbPatch(
+      collection,
+      Object.fromEntries(updates.map((item) => [firebaseRecordKey(item, item.id || item.key), cleanFirebase(item)])),
+    );
+  }
+
   async function addSchedule(collection, form) {
     if (!form.title.trim()) return;
     const item = {
@@ -435,6 +475,7 @@ export default function App() {
       description: form.description.trim(),
       authorId: sessionUser?.id || "",
       authorName: sessionUser?.name || "관리자",
+      reactions: {},
       createdAt: now(),
     };
     setData((current) => ({ ...current, [collection]: [item, ...current[collection]] }));
@@ -475,6 +516,7 @@ export default function App() {
       fileType: form.fileType || "",
       authorId: sessionUser.id,
       authorName: sessionUser.name,
+      reactions: {},
       createdAt: now(),
     };
     setData((current) => ({ ...current, outputs: [item, ...current.outputs] }));
@@ -777,7 +819,7 @@ export default function App() {
 
     setData((current) => ({
       ...current,
-      [collection]: current[collection].filter((item) => item.id !== record.id && item.key !== record.key),
+      [collection]: current[collection].filter((item) => !isSameRecord(item, record)),
     }));
     await fbDelete(`${collection}/${firebaseRecordKey(record, record.id || record.key)}`);
   }
@@ -853,6 +895,7 @@ export default function App() {
           addPromo={addPromo}
           deletePromo={(promo) => deleteRecord("promos", promo)}
           updatePromo={(promo, changes) => updateRecord("promos", promo, changes)}
+          toggleReaction={(promo, type) => toggleReaction("promos", promo, type)}
         />
       )}
       {page === "integrated" && (
@@ -886,6 +929,7 @@ export default function App() {
           addOutput={addOutput}
           updateOutput={(output, changes) => updateRecord("outputs", output, changes)}
           deleteOutput={(output) => deleteRecord("outputs", output)}
+          toggleReaction={toggleReaction}
           markAttendance={markAttendance}
         />
       )}
@@ -1081,6 +1125,7 @@ function RegisterForm({ register, loading }) {
         <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
           <option value="active">현역 PS1</option>
           <option value="graduated">졸업생 PS0</option>
+          <option value="professor">지도교수 Prof.</option>
         </select>
       </label>
       <ClubPicker selected={form.clubs} toggle={toggleClub} imageMode />
@@ -1110,7 +1155,7 @@ function RegisterForm({ register, loading }) {
   );
 }
 
-function HomePage({ data, isAdmin, user, myClubIds, openClub, addPromo, deletePromo, updatePromo }) {
+function HomePage({ data, isAdmin, user, myClubIds, openClub, addPromo, deletePromo, updatePromo, toggleReaction }) {
   const writableClubs = isAdmin ? CLUB_LIST : CLUB_LIST.filter((club) => user.clubs?.includes(club.id));
   const visiblePromos = getHomePromos(
     isAdmin ? data.promos : data.promos.filter((promo) => myClubIds.includes(promo.clubId)),
@@ -1135,7 +1180,7 @@ function HomePage({ data, isAdmin, user, myClubIds, openClub, addPromo, deletePr
 
       <section className="panel">
         <h2><Megaphone size={19} /> 홍보 게시판</h2>
-        <PostList posts={visiblePromos} isAdmin={isAdmin} currentUser={user} deletePost={deletePromo} updatePost={updatePromo} isPromo />
+        <PostList posts={visiblePromos} isAdmin={isAdmin} currentUser={user} deletePost={deletePromo} updatePost={updatePromo} toggleReaction={toggleReaction} isPromo />
       </section>
     </div>
   );
@@ -1192,6 +1237,7 @@ function getHomePromos(promos) {
     if (group) {
       group.groupedItems.push(promo);
       group.globalClubIds = Array.from(new Set([...group.globalClubIds, promo.clubId]));
+      group.reactions = mergeReactions(group.groupedItems);
       continue;
     }
 
@@ -1199,6 +1245,7 @@ function getHomePromos(promos) {
       ...promo,
       groupedItems: [promo],
       globalClubIds: [promo.clubId],
+      reactions: mergeReactions([promo]),
     };
     groups.set(key, grouped);
     result.push(grouped);
@@ -1321,6 +1368,7 @@ function CompareStats({ stats }) {
     <section className="panel">
       <h2><BarChart3 size={19} /> 동아리별 비교</h2>
       <ComparisonSummary stats={stats} />
+      <ComparisonVisual stats={stats} />
       <div className="compare-bars">
         {stats.map((stat) => (
           <article className="chart-card" key={stat.club.id}>
@@ -1341,6 +1389,7 @@ function CompareStats({ stats }) {
               <th>회원 수</th>
               <th>현역</th>
               <th>졸업생</th>
+              <th>지도교수</th>
               <th>게시글</th>
               <th>홍보글</th>
               <th>성과</th>
@@ -1355,6 +1404,7 @@ function CompareStats({ stats }) {
                 <td>{stat.members}</td>
                 <td>{stat.active}</td>
                 <td>{stat.graduated}</td>
+                <td>{stat.professors}</td>
                 <td>{stat.posts}</td>
                 <td>{stat.promos}</td>
                 <td>{stat.outputs}</td>
@@ -1369,11 +1419,47 @@ function CompareStats({ stats }) {
   );
 }
 
+function ComparisonVisual({ stats }) {
+  const metrics = [
+    ["회원", "members", "명"],
+    ["게시글", "posts", "개"],
+    ["홍보글", "promos", "개"],
+    ["성과", "outputs", "개"],
+    ["자료", "resources", "개"],
+  ];
+
+  return (
+    <div className="comparison-visual">
+      {metrics.map(([label, key, suffix]) => {
+        const max = Math.max(1, ...stats.map((stat) => stat[key]));
+        return (
+          <article className="comparison-metric" key={key}>
+            <strong>{label}</strong>
+            {stats.map((stat) => {
+              const width = stat[key] ? Math.max(5, Math.round((stat[key] / max) * 100)) : 0;
+              return (
+                <div className="comparison-line" key={stat.club.id}>
+                  <ClubBadge clubId={stat.club.id} />
+                  <div className="comparison-track">
+                    <span style={{ width: `${width}%`, background: stat.club.color }} />
+                  </div>
+                  <b>{stat[key]}{suffix}</b>
+                </div>
+              );
+            })}
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 function ComparisonSummary({ stats }) {
   const metrics = [
     ["회원", "members", "명"],
     ["현역", "active", "명"],
     ["졸업생", "graduated", "명"],
+    ["지도교수", "professors", "명"],
     ["게시글", "posts", "개"],
     ["홍보글", "promos", "개"],
     ["성과", "outputs", "개"],
@@ -1393,7 +1479,7 @@ function ComparisonSummary({ stats }) {
   );
 }
 
-function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub, tab, setTab, addPost, deletePost, updatePost, deletePromo, updatePromo, addSchedule, updateSchedule, deleteSchedule, addOutput, updateOutput, deleteOutput, markAttendance }) {
+function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub, tab, setTab, addPost, deletePost, updatePost, deletePromo, updatePromo, addSchedule, updateSchedule, deleteSchedule, addOutput, updateOutput, deleteOutput, toggleReaction, markAttendance }) {
   const isMember = isAdmin || user.clubs?.includes(selectedClubId);
   const posts = data.posts.filter((post) => post.clubId === selectedClubId);
   const promos = data.promos.filter((promo) => promo.clubId === selectedClubId);
@@ -1425,17 +1511,17 @@ function ClubPage({ data, user, isAdmin, selectedClub, selectedClubId, openClub,
             <button className={tab === "attendance" ? "active" : ""} type="button" onClick={() => setTab("attendance")}>출석</button>
             <button className={tab === "members" ? "active" : ""} type="button" onClick={() => setTab("members")}>회원</button>
           </div>
-          {tab === "board" && <BoardPanel title={selectedClub.boardName} posts={posts} user={user} isAdmin={isAdmin} addPost={addPost} deletePost={deletePost} updatePost={updatePost} />}
+          {tab === "board" && <BoardPanel title={selectedClub.boardName} posts={posts} user={user} isAdmin={isAdmin} addPost={addPost} deletePost={deletePost} updatePost={updatePost} toggleReaction={(post, type) => toggleReaction("posts", post, type)} />}
           {tab === "promo" && (
             <section className="panel">
               <h2><Megaphone size={19} /> {selectedClub.name} 홍보 게시판</h2>
-              <PostList posts={promos} isAdmin={isAdmin} currentUser={user} deletePost={deletePromo} updatePost={updatePromo} isPromo />
+              <PostList posts={promos} isAdmin={isAdmin} currentUser={user} deletePost={deletePromo} updatePost={updatePromo} toggleReaction={(promo, type) => toggleReaction("promos", promo, type)} isPromo />
             </section>
           )}
           {tab === "monthly" && <MonthlyCalendarPanel items={data.schedules.filter((item) => item.clubId === selectedClubId && item.kind === "monthly")} canManage={isMember} addSchedule={addSchedule} updateSchedule={updateSchedule} deleteSchedule={deleteSchedule} />}
-          {tab === "outputs" && <OutputPanel outputs={outputs} canManage={isMember} addOutput={addOutput} updateOutput={updateOutput} deleteOutput={deleteOutput} />}
+          {tab === "outputs" && <OutputPanel outputs={outputs} canManage={isMember} currentUser={user} addOutput={addOutput} updateOutput={updateOutput} deleteOutput={deleteOutput} toggleReaction={(output, type) => toggleReaction("outputs", output, type)} />}
           {tab === "event" && <SchedulePanel title="주별 이벤트" collection="events" kind="event" items={data.events.filter((item) => item.clubId === selectedClubId)} isAdmin={isAdmin} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
-          {tab === "lineMemo" && <LineMemoPanel items={data.schedules.filter((item) => item.clubId === selectedClubId && item.kind === "lineMemo")} user={user} isAdmin={isAdmin} addSchedule={addSchedule} deleteSchedule={deleteSchedule} />}
+          {tab === "lineMemo" && <LineMemoPanel items={data.schedules.filter((item) => item.clubId === selectedClubId && item.kind === "lineMemo")} user={user} isAdmin={isAdmin} addSchedule={addSchedule} deleteSchedule={deleteSchedule} toggleReaction={(item, type) => toggleReaction("schedules", item, type)} />}
           {tab === "attendance" && <AttendancePanel data={data} members={members} user={user} isAdmin={isAdmin} clubId={selectedClubId} markAttendance={markAttendance} />}
           {tab === "members" && (
             <section className="panel">
@@ -1474,7 +1560,7 @@ function ClubDescription({ club }) {
   return <span>{club.description}</span>;
 }
 
-function BoardPanel({ title, posts, user, isAdmin, addPost, deletePost, updatePost }) {
+function BoardPanel({ title, posts, user, isAdmin, addPost, deletePost, updatePost, toggleReaction }) {
   const [content, setContent] = useState("");
   const [anonymous, setAnonymous] = useState(false);
   return (
@@ -1488,7 +1574,7 @@ function BoardPanel({ title, posts, user, isAdmin, addPost, deletePost, updatePo
         </label>
         <button className="primary" type="submit"><Plus size={17} /> 등록</button>
       </form>
-      <PostList posts={posts} isAdmin={isAdmin} currentUser={user} deletePost={deletePost} updatePost={updatePost} />
+      <PostList posts={posts} isAdmin={isAdmin} currentUser={user} deletePost={deletePost} updatePost={updatePost} toggleReaction={toggleReaction} />
     </section>
   );
 }
@@ -1641,7 +1727,7 @@ function ScheduleItem({ item, canManage, updateSchedule, deleteSchedule }) {
   );
 }
 
-function LineMemoPanel({ items, user, isAdmin, addSchedule, deleteSchedule }) {
+function LineMemoPanel({ items, user, isAdmin, addSchedule, deleteSchedule, toggleReaction }) {
   const [text, setText] = useState("");
   const sorted = [...items].sort(sortNewest);
   const trimmed = text.trim();
@@ -1684,6 +1770,7 @@ function LineMemoPanel({ items, user, isAdmin, addSchedule, deleteSchedule }) {
           return (
             <article className="post line-memo-card" key={item.id}>
               <p>{item.title}</p>
+              <ReactionBar record={item} currentUser={user} onToggle={(type) => toggleReaction?.(item, type)} />
               <footer>
                 <span>{item.authorName || "익명"} · {formatDate(item.createdAt || item.date)}</span>
                 {canDelete && (
@@ -1698,7 +1785,7 @@ function LineMemoPanel({ items, user, isAdmin, addSchedule, deleteSchedule }) {
   );
 }
 
-function OutputPanel({ outputs, canManage, addOutput, updateOutput, deleteOutput }) {
+function OutputPanel({ outputs, canManage, currentUser, addOutput, updateOutput, deleteOutput, toggleReaction }) {
   return (
     <section className="panel">
       <h2><Trophy size={19} /> 동아리 성과</h2>
@@ -1711,8 +1798,10 @@ function OutputPanel({ outputs, canManage, addOutput, updateOutput, deleteOutput
             key={output.id}
             output={output}
             canManage={canManage}
+            currentUser={currentUser}
             updateOutput={updateOutput}
             deleteOutput={deleteOutput}
+            toggleReaction={toggleReaction}
           />
         ))}
       </div>
@@ -1754,7 +1843,7 @@ function OutputComposer({ addOutput }) {
   );
 }
 
-function OutputCard({ output, canManage, updateOutput, deleteOutput }) {
+function OutputCard({ output, canManage, currentUser, updateOutput, deleteOutput, toggleReaction }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ title: output.title || "", content: output.content || "" });
   const isImage = output.fileType?.startsWith("image/");
@@ -1792,6 +1881,7 @@ function OutputCard({ output, canManage, updateOutput, deleteOutput }) {
               </a>
             )
           )}
+          <ReactionBar record={output} currentUser={currentUser} onToggle={(type) => toggleReaction?.(output, type)} />
           <footer>
             <span>{output.authorName} · 작성 {formatDate(output.createdAt)}{output.editedAt && ` · 수정 ${formatDateTime(output.editedAt)}`}</span>
             {canManage && (
@@ -2083,6 +2173,7 @@ function ProfileEditor({ user, saveProfile, done }) {
           <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
             <option value="active">현역 PS1</option>
             <option value="graduated">졸업생 PS0</option>
+            <option value="professor">지도교수 Prof.</option>
           </select>
         </label>
         <ClubPicker selected={form.clubs} toggle={toggleClub} imageMode />
@@ -2586,7 +2677,7 @@ function ClubPicker({ selected, toggle, imageMode = false }) {
   );
 }
 
-function PostList({ posts, isAdmin, currentUser, deletePost, updatePost, isPromo = false }) {
+function PostList({ posts, isAdmin, currentUser, deletePost, updatePost, toggleReaction, isPromo = false }) {
   if (posts.length === 0) return <p className="empty">등록된 글이 없습니다.</p>;
   return (
     <div className="cards">
@@ -2598,6 +2689,7 @@ function PostList({ posts, isAdmin, currentUser, deletePost, updatePost, isPromo
           currentUser={currentUser}
           deletePost={deletePost}
           updatePost={updatePost}
+          toggleReaction={toggleReaction}
           isPromo={isPromo}
         />
       ))}
@@ -2605,7 +2697,7 @@ function PostList({ posts, isAdmin, currentUser, deletePost, updatePost, isPromo
   );
 }
 
-function PostCard({ post, isAdmin, currentUser, deletePost, updatePost, isPromo }) {
+function PostCard({ post, isAdmin, currentUser, deletePost, updatePost, toggleReaction, isPromo }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({
     title: post.title || "",
@@ -2658,6 +2750,7 @@ function PostCard({ post, isAdmin, currentUser, deletePost, updatePost, isPromo 
           <p>{post.content}</p>
         </>
       )}
+      {!editing && <ReactionBar record={post} currentUser={currentUser} onToggle={(type) => toggleReaction?.(post, type)} />}
       <footer>
         <span>
           {post.authorName} · 작성 {formatDate(post.createdAt)}
@@ -2681,6 +2774,60 @@ function PostCard({ post, isAdmin, currentUser, deletePost, updatePost, isPromo 
         )}
       </footer>
     </article>
+  );
+}
+
+function ReactionBar({ record, currentUser, onToggle }) {
+  const [open, setOpen] = useState(false);
+  const entries = getReactionEntries(record);
+  const counts = getReactionCounts(entries);
+  const myType = currentUser?.id ? record.reactions?.[currentUser.id]?.type : "";
+  const canReact = Boolean(currentUser?.id && onToggle);
+
+  if (!canReact && entries.length === 0) return null;
+
+  return (
+    <div className="reaction-wrap">
+      {canReact && (
+        <div className="reaction-buttons" aria-label="좋아요 선택">
+          {REACTION_TYPES.map(({ type, label, Icon }) => (
+            <button
+              key={type}
+              className={myType === type ? "active" : ""}
+              type="button"
+              title={myType === type ? `${label} 취소` : `${label} 남기기`}
+              onClick={() => onToggle(type)}
+            >
+              <Icon size={15} />
+              <span>{counts[type] || 0}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {entries.length > 0 && (
+        <div className="reaction-list-wrap">
+          <button className="reaction-summary" type="button" onClick={() => setOpen((current) => !current)}>
+            공감한 친구 {entries.length}명
+          </button>
+          {open && (
+            <div className="reaction-panel">
+              <strong>공감한 친구</strong>
+              <span>전체</span>
+              {entries.map(([userId, reaction]) => {
+                const { Icon, label } = getReactionDefinition(reaction.type);
+                return (
+                  <div className="reaction-person" key={userId}>
+                    <span className="reaction-avatar"><User size={14} /></span>
+                    <b>{reaction.userName || "이름 없음"}</b>
+                    <span className="reaction-person-type" title={label}><Icon size={16} /></span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2754,6 +2901,36 @@ function Bar({ label, value, max, color, suffix }) {
       <div className="bar"><span style={{ width: `${width}%`, background: color }} /></div>
     </div>
   );
+}
+
+function mergeReactions(records) {
+  const reactions = {};
+  for (const record of records) {
+    for (const [userId, reaction] of Object.entries(record.reactions || {})) {
+      const current = reactions[userId];
+      if (!current || Date.parse(reaction.reactedAt || "") >= Date.parse(current.reactedAt || "")) {
+        reactions[userId] = reaction;
+      }
+    }
+  }
+  return reactions;
+}
+
+function getReactionEntries(record) {
+  return Object.entries(record.reactions || {})
+    .filter(([, reaction]) => reaction?.type)
+    .sort(([, a], [, b]) => Date.parse(b.reactedAt || "") - Date.parse(a.reactedAt || ""));
+}
+
+function getReactionCounts(entries) {
+  return entries.reduce((counts, [, reaction]) => {
+    counts[reaction.type] = (counts[reaction.type] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function getReactionDefinition(type) {
+  return REACTION_TYPES.find((item) => item.type === type) || REACTION_TYPES[0];
 }
 
 async function fetchRemoteData() {
@@ -2967,6 +3144,12 @@ function upsertByKey(items, item, keyField) {
   return exists ? items.map((entry) => (entry[keyField] === item[keyField] ? item : entry)) : [item, ...items];
 }
 
+function isSameRecord(left, right) {
+  if (left?.id && right?.id) return left.id === right.id;
+  if (left?.key && right?.key) return left.key === right.key;
+  return false;
+}
+
 function getVisibleMessages(messages, user, isAdmin) {
   if (!user || isAdmin) return [];
   return messages
@@ -2997,8 +3180,9 @@ function buildStats(data) {
     return {
       club,
       members: members.length,
-      active: members.filter((member) => member.status !== "graduated").length,
+      active: members.filter((member) => member.status === "active" || !member.status).length,
       graduated: members.filter((member) => member.status === "graduated").length,
+      professors: members.filter((member) => member.status === "professor").length,
       posts: data.posts.filter((post) => post.clubId === club.id).length,
       promos: data.promos.filter((promo) => promo.clubId === club.id).length,
       outputs: outputs.filter((item) => item.clubId === club.id).length,
@@ -3031,11 +3215,13 @@ function memberLabel(member) {
 }
 
 function psMark(status) {
+  if (status === "professor") return <span className="ps-mark prof">Prof.</span>;
   const graduated = status === "graduated";
   return <span className={graduated ? "ps-mark ps0" : "ps-mark ps1"}>{graduated ? "PS0" : "PS1"}</span>;
 }
 
 function statusLabel(status) {
+  if (status === "professor") return "지도교수";
   return status === "graduated" ? "졸업생" : "현역";
 }
 
