@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
+  Crown,
   Download,
   Eye,
   EyeOff,
@@ -158,7 +159,10 @@ export default function App() {
     return data.members.find((member) => member.id === user.id) || user;
   }, [data.members, isAdmin, user]);
 
-  const myClubIds = isAdmin
+  const isSubAdmin = !isAdmin && isSubAdminMember(sessionUser);
+  const canAdmin = isAdmin || isSubAdmin;
+  const adminReaderId = isAdmin ? "admin" : sessionUser?.id;
+  const myClubIds = canAdmin
     ? CLUB_LIST.map((club) => club.id)
     : sessionUser?.clubs || [];
   const selectedClub = CLUBS[selectedClubId] || CLUBS.hora;
@@ -171,10 +175,11 @@ export default function App() {
     () => (data.messages || []).filter((item) => item.recipientId === "admin").sort(sortNewest),
     [data.messages],
   );
-  const unreadMessageCount = isAdmin ? 0 : visibleMessages.filter((item) => !isMessageRead(data.messageReads || [], sessionUser?.id, item.id)).length;
-  const unreadAdminMessageCount = isAdmin ? adminMessages.filter((item) => !isMessageRead(data.messageReads || [], "admin", item.id)).length : 0;
+  const unreadMessageCount = visibleMessages.filter((item) => !isMessageRead(data.messageReads || [], sessionUser?.id, item.id)).length;
+  const unreadAdminMessageCount = canAdmin ? adminMessages.filter((item) => !isMessageRead(data.messageReads || [], adminReaderId, item.id)).length : 0;
   const pendingPwCount = data.pwRequests.filter((req) => req.status === "pending").length;
   const pendingSignupCount = data.signupRequests.filter((req) => req.approvalStatus === "pending").length;
+  const adminNoticeCount = pendingPwCount + (isAdmin ? pendingSignupCount : 0);
 
   async function refreshData({ silent = false } = {}) {
     if (!silent) setLoading(true);
@@ -529,6 +534,7 @@ export default function App() {
       ? null
       : data.members.find((member) => member.id === form.recipientId);
     if (form.recipientId !== "all" && !recipient) throw new Error("쪽지를 받을 회원을 선택해주세요.");
+    const senderName = isAdmin ? "관리자" : `${memberLabel(sessionUser)} 부관리자`;
     const item = {
       id: makeId("message"),
       recipientId: form.recipientId,
@@ -536,8 +542,9 @@ export default function App() {
       scope: form.recipientId === "all" ? "all" : "member",
       title: form.title.trim() || "관리자 쪽지",
       content: form.content.trim(),
-      senderId: "admin",
-      senderName: "관리자",
+      senderId: isAdmin ? "admin" : sessionUser.id,
+      senderName,
+      senderRole: isAdmin ? "admin" : "subAdmin",
       createdAt: now(),
     };
     setData((current) => ({ ...current, messages: [item, ...current.messages] }));
@@ -565,7 +572,7 @@ export default function App() {
   }
 
   async function markMessagesRead(messages) {
-    if (!sessionUser?.id || isAdmin || messages.length === 0) return;
+    if (!sessionUser?.id || messages.length === 0) return;
     const unread = messages.filter((item) => !isMessageRead(data.messageReads || [], sessionUser.id, item.id));
     if (unread.length === 0) return;
     const reads = unread.map((item) => ({
@@ -585,12 +592,12 @@ export default function App() {
   }
 
   async function markAdminMessagesRead(messages) {
-    if (!isAdmin || messages.length === 0) return;
-    const unread = messages.filter((item) => !isMessageRead(data.messageReads || [], "admin", item.id));
+    if (!canAdmin || !adminReaderId || messages.length === 0) return;
+    const unread = messages.filter((item) => !isMessageRead(data.messageReads || [], adminReaderId, item.id));
     if (unread.length === 0) return;
     const reads = unread.map((item) => ({
-      key: `admin_${item.id}`,
-      memberId: "admin",
+      key: `${adminReaderId}_${item.id}`,
+      memberId: adminReaderId,
       messageId: item.id,
       readAt: now(),
     }));
@@ -688,6 +695,7 @@ export default function App() {
   }
 
   async function approveSignupRequest(req) {
+    if (!isAdmin) throw new Error("가입 승인은 관리자만 할 수 있습니다.");
     const latest = await fetchRemoteData().catch(() => data);
     const duplicate = latest.members.some(
       (member) =>
@@ -726,6 +734,7 @@ export default function App() {
   }
 
   async function rejectSignupRequest(req, reason) {
+    if (!isAdmin) throw new Error("가입 신청 처리는 관리자만 할 수 있습니다.");
     const reviewed = {
       ...req,
       approvalStatus: "rejected",
@@ -741,6 +750,7 @@ export default function App() {
   }
 
   async function restoreSignupRequest(req) {
+    if (!isAdmin) throw new Error("가입 신청 처리는 관리자만 할 수 있습니다.");
     const restored = {
       ...req,
       approvalStatus: "pending",
@@ -757,6 +767,7 @@ export default function App() {
   }
 
   async function forceWithdraw(member, reason) {
+    if (!isAdmin) throw new Error("강제 탈퇴는 관리자만 할 수 있습니다.");
     if (!reason.trim()) throw new Error("탈퇴 사유를 입력해주세요.");
     const item = {
       id: makeId("withdraw"),
@@ -776,6 +787,32 @@ export default function App() {
     }));
     await fbPatch("withdrawals", { [firebaseKey(item.id)]: cleanFirebase(item) });
     await fbDelete(`members/${firebaseRecordKey(member, member.id)}`);
+  }
+
+  async function toggleSubAdmin(member) {
+    if (!isAdmin) throw new Error("부관리자 지정은 관리자만 할 수 있습니다.");
+    const selected = isSubAdminMember(member);
+    if (!selected && data.members.filter(isSubAdminMember).length >= 5) {
+      throw new Error("부관리자는 최대 5명까지 지정할 수 있습니다.");
+    }
+    const updated = {
+      ...member,
+      updatedAt: now(),
+    };
+    if (selected) {
+      delete updated.role;
+      delete updated.isSubAdmin;
+    } else {
+      updated.role = "subAdmin";
+      updated.isSubAdmin = true;
+    }
+    setData((current) => ({
+      ...current,
+      members: upsertById(current.members, updated),
+    }));
+    if (sessionUser?.id === updated.id) setUser(updated);
+    await persistMember(updated);
+    setMessage(selected ? `${member.name}님의 부관리자 지정을 해제했습니다.` : `${member.name}님을 부관리자로 지정했습니다.`);
   }
 
   async function selfWithdraw() {
@@ -869,13 +906,17 @@ export default function App() {
           <NavButton id="home" page={page} setPage={setPage} icon={Home} label="홈" />
           <NavButton id="integrated" page={page} setPage={setPage} icon={BarChart3} label="통합현황" />
           <NavButton id="club" page={page} setPage={setPage} icon={Users} label="동아리" />
-          {isAdmin && <NavButton id="adminMessages" page={page} setPage={setPage} icon={Mail} label={`쪽지${unreadAdminMessageCount ? ` ${unreadAdminMessageCount}` : ""}`} highlight={unreadAdminMessageCount > 0} />}
-          {isAdmin && <NavButton id="admin" page={page} setPage={setPage} icon={ShieldCheck} label={`관리자${pendingPwCount + pendingSignupCount ? ` ${pendingPwCount + pendingSignupCount}` : ""}`} />}
+          {canAdmin && <NavButton id="adminMessages" page={page} setPage={setPage} icon={Mail} label={`쪽지${unreadAdminMessageCount ? ` ${unreadAdminMessageCount}` : ""}`} highlight={unreadAdminMessageCount > 0} />}
+          {canAdmin && <NavButton id="admin" page={page} setPage={setPage} icon={isAdmin ? Crown : ShieldCheck} label={`관리자${adminNoticeCount ? ` ${adminNoticeCount}` : ""}`} />}
           {!isAdmin && <NavButton id="profile" page={page} setPage={setPage} icon={User} label="내 정보" />}
           {!isAdmin && <NavButton id="messages" page={page} setPage={setPage} icon={Mail} label={`쪽지함${unreadMessageCount ? ` ${unreadMessageCount}` : ""}`} highlight={unreadMessageCount > 0} />}
         </nav>
         <div className="session">
-          <span>{isAdmin ? "관리자" : sessionUser?.name}</span>
+          <span className={isAdmin ? "admin-session" : ""}>
+            {isAdmin && <Crown size={23} />}
+            {isAdmin ? "관리자" : sessionUser?.name}
+            {!isAdmin && isSubAdmin && <span className="mini-crown"><Crown size={13} /> 부관리자</span>}
+          </span>
           <button type="button" onClick={logout}>
             <LogOut size={16} />
             로그아웃
@@ -888,7 +929,7 @@ export default function App() {
       {page === "home" && (
         <HomePage
           data={data}
-          isAdmin={isAdmin}
+          isAdmin={canAdmin}
           user={sessionUser}
           myClubIds={myClubIds}
           openClub={openClub}
@@ -912,7 +953,7 @@ export default function App() {
         <ClubPage
           data={data}
           user={sessionUser}
-          isAdmin={isAdmin}
+          isAdmin={canAdmin}
           selectedClub={selectedClub}
           selectedClubId={selectedClubId}
           openClub={openClub}
@@ -953,17 +994,18 @@ export default function App() {
           markMessagesRead={markMessagesRead}
         />
       )}
-      {page === "adminMessages" && isAdmin && (
+      {page === "adminMessages" && canAdmin && (
         <AdminMessages
           members={data.members}
           messages={data.messages}
           messageReads={data.messageReads || []}
+          readerId={adminReaderId}
           sendMessage={sendMessage}
           markAdminMessagesRead={markAdminMessagesRead}
           deleteMessage={(item) => deleteRecord("messages", item)}
         />
       )}
-      {page === "admin" && isAdmin && (
+      {page === "admin" && canAdmin && (
         <AdminPage
           data={data}
           stats={stats}
@@ -977,6 +1019,10 @@ export default function App() {
           restoreSignupRequest={restoreSignupRequest}
           updateRecord={updateRecord}
           forceWithdraw={forceWithdraw}
+          toggleSubAdmin={toggleSubAdmin}
+          canManageSubAdmins={isAdmin}
+          canApproveSignup={isAdmin}
+          canForceWithdraw={isAdmin}
           refresh={() => refreshData()}
         />
       )}
@@ -1367,7 +1413,6 @@ function CompareStats({ stats }) {
   return (
     <section className="panel">
       <h2><BarChart3 size={19} /> 동아리별 비교</h2>
-      <ComparisonSummary stats={stats} />
       <ComparisonVisual stats={stats} />
       <div className="compare-bars">
         {stats.map((stat) => (
@@ -1450,31 +1495,6 @@ function ComparisonVisual({ stats }) {
           </article>
         );
       })}
-    </div>
-  );
-}
-
-function ComparisonSummary({ stats }) {
-  const metrics = [
-    ["회원", "members", "명"],
-    ["현역", "active", "명"],
-    ["졸업생", "graduated", "명"],
-    ["지도교수", "professors", "명"],
-    ["게시글", "posts", "개"],
-    ["홍보글", "promos", "개"],
-    ["성과", "outputs", "개"],
-    ["자료", "resources", "개"],
-    ["출석률", "attendanceRate", "%"],
-  ];
-
-  return (
-    <div className="comparison-summary">
-      {metrics.map(([label, key, suffix]) => (
-        <article key={key}>
-          <strong>{label}</strong>
-          <span>{formatRanking(stats, key, suffix)}</span>
-        </article>
-      ))}
     </div>
   );
 }
@@ -1951,7 +1971,7 @@ function AttendancePanel({ data, members, user, isAdmin, clubId, markAttendance 
           const selected = data.attendance.find((item) => item.key === key)?.status;
           return (
             <article className="attendance-row" key={member.id}>
-              <strong>{memberLabel(member)} {psMark(member.status)}</strong>
+              <strong>{memberLabel(member)} {memberMarks(member)}</strong>
               <div className="button-row">
                 {statuses.map(([status, label]) => (
                   <button className={selected === status ? "active" : ""} key={status} type="button" onClick={() => markAttendance(member.id, date, status)}>{label}</button>
@@ -1978,7 +1998,7 @@ function ProfilePage({ data, user, saveProfile, changePassword, submitPwRequest,
       <section className="profile">
         <div className="avatar">{user.name?.slice(0, 1)}</div>
         <div>
-          <h1>{memberLabel(user)} {psMark(user.status)}</h1>
+          <h1>{memberLabel(user)} {memberMarks(user)}</h1>
           <p>{genderLabel(user.gender)} · {statusLabel(user.status)}</p>
           <div className="badges">{(user.clubs || []).map((clubId) => <ClubBadge key={clubId} clubId={clubId} />)}</div>
         </div>
@@ -2044,10 +2064,6 @@ function MessagesPage({ messages, sentMessages, messageReads, user, sendAdminMes
   const [form, setForm] = useState({ title: "", content: "" });
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    markMessagesRead(messages).catch(console.warn);
-  }, [messages, markMessagesRead]);
-
   async function submit(event) {
     event.preventDefault();
     setError("");
@@ -2078,7 +2094,19 @@ function MessagesPage({ messages, sentMessages, messageReads, user, sendAdminMes
           ) : messages.map((message) => {
             const unread = !isMessageRead(messageReads || [], user?.id, message.id);
             return (
-            <article className={unread ? "post unread-message" : "post"} key={message.id}>
+            <article
+              className={unread ? "post unread-message clickable-message" : "post clickable-message"}
+              key={message.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => markMessagesRead([message]).catch(console.warn)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  markMessagesRead([message]).catch(console.warn);
+                }
+              }}
+            >
               <div className="post-head">
                 <span className="global-badge">{message.scope === "all" ? "전체" : "개별"}</span>
                 {unread && <span className="secret-badge">새 쪽지</span>}
@@ -2240,9 +2268,10 @@ function PwRequestPanel({ requests, submitPwRequest }) {
   );
 }
 
-function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, approveSignupRequest, rejectSignupRequest, restoreSignupRequest, updateRecord, forceWithdraw, refresh }) {
+function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, approveSignupRequest, rejectSignupRequest, restoreSignupRequest, updateRecord, forceWithdraw, toggleSubAdmin, canManageSubAdmins, canApproveSignup, canForceWithdraw, refresh }) {
   const pendingPwCount = data.pwRequests.filter((req) => req.status === "pending").length;
   const pendingSignupCount = data.signupRequests.filter((req) => req.approvalStatus === "pending").length;
+  const activeTab = !canApproveSignup && tab === "signup" ? "members" : tab;
   return (
     <div className="stack">
       <section className="toolbar">
@@ -2250,19 +2279,19 @@ function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyP
         <button type="button" onClick={refresh}><RefreshCw size={16} /> 새로고침</button>
       </section>
       <div className="tabs">
-        <button className={tab === "members" ? "active" : ""} type="button" onClick={() => setTab("members")}>회원</button>
-        <button className={tab === "signup" ? "active" : ""} type="button" onClick={() => setTab("signup")}>가입신청 {pendingSignupCount || ""}</button>
-        <button className={tab === "pw" ? "active" : ""} type="button" onClick={() => setTab("pw")}>비번요청 {pendingPwCount || ""}</button>
-        <button className={tab === "resources" ? "active" : ""} type="button" onClick={() => setTab("resources")}>자료</button>
-        <button className={tab === "posts" ? "active" : ""} type="button" onClick={() => setTab("posts")}>게시판</button>
-        <button className={tab === "stats" ? "active" : ""} type="button" onClick={() => setTab("stats")}>통계</button>
-        <button className={tab === "withdrawals" ? "active" : ""} type="button" onClick={() => setTab("withdrawals")}>탈퇴이력</button>
+        <button className={activeTab === "members" ? "active" : ""} type="button" onClick={() => setTab("members")}>회원</button>
+        {canApproveSignup && <button className={activeTab === "signup" ? "active" : ""} type="button" onClick={() => setTab("signup")}>가입신청 {pendingSignupCount || ""}</button>}
+        <button className={activeTab === "pw" ? "active" : ""} type="button" onClick={() => setTab("pw")}>비번요청 {pendingPwCount || ""}</button>
+        <button className={activeTab === "resources" ? "active" : ""} type="button" onClick={() => setTab("resources")}>자료</button>
+        <button className={activeTab === "posts" ? "active" : ""} type="button" onClick={() => setTab("posts")}>게시판</button>
+        <button className={activeTab === "stats" ? "active" : ""} type="button" onClick={() => setTab("stats")}>통계</button>
+        <button className={activeTab === "withdrawals" ? "active" : ""} type="button" onClick={() => setTab("withdrawals")}>탈퇴이력</button>
       </div>
-      {tab === "members" && <AdminMembers members={data.members} forceWithdraw={forceWithdraw} />}
-      {tab === "signup" && <AdminSignupRequests requests={data.signupRequests} approveSignupRequest={approveSignupRequest} rejectSignupRequest={rejectSignupRequest} restoreSignupRequest={restoreSignupRequest} />}
-      {tab === "pw" && <AdminPwRequests requests={data.pwRequests} members={data.members} replyPwRequest={replyPwRequest} />}
-      {tab === "resources" && <AdminResources resources={data.resources} addResource={addResource} deleteResource={(item) => deleteRecord("resources", item)} />}
-      {tab === "posts" && (
+      {activeTab === "members" && <AdminMembers members={data.members} forceWithdraw={forceWithdraw} toggleSubAdmin={toggleSubAdmin} canManageSubAdmins={canManageSubAdmins} canForceWithdraw={canForceWithdraw} />}
+      {activeTab === "signup" && canApproveSignup && <AdminSignupRequests requests={data.signupRequests} approveSignupRequest={approveSignupRequest} rejectSignupRequest={rejectSignupRequest} restoreSignupRequest={restoreSignupRequest} />}
+      {activeTab === "pw" && <AdminPwRequests requests={data.pwRequests} members={data.members} replyPwRequest={replyPwRequest} />}
+      {activeTab === "resources" && <AdminResources resources={data.resources} addResource={addResource} deleteResource={(item) => deleteRecord("resources", item)} />}
+      {activeTab === "posts" && (
         <>
           <section className="panel">
             <h2>게시글 관리</h2>
@@ -2274,18 +2303,29 @@ function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyP
           </section>
         </>
       )}
-      {tab === "stats" && <CompareStats stats={stats} />}
-      {tab === "withdrawals" && <Withdrawals items={data.withdrawals} />}
+      {activeTab === "stats" && <CompareStats stats={stats} />}
+      {activeTab === "withdrawals" && <Withdrawals items={data.withdrawals} />}
     </div>
   );
 }
 
-function AdminMembers({ members, forceWithdraw }) {
+function AdminMembers({ members, forceWithdraw, toggleSubAdmin, canManageSubAdmins, canForceWithdraw }) {
+  const subAdminCount = members.filter(isSubAdminMember).length;
   return (
     <section className="panel">
       <h2><Users size={19} /> 회원 관리</h2>
+      <div className="notice">부관리자는 최대 5명까지 지정할 수 있습니다. 현재 {subAdminCount}/5명</div>
       <div className="cards">
-        {members.map((member) => <ForceWithdrawRow key={member.id} member={member} forceWithdraw={forceWithdraw} />)}
+        {members.map((member) => (
+          <ForceWithdrawRow
+            key={member.id}
+            member={member}
+            forceWithdraw={forceWithdraw}
+            toggleSubAdmin={toggleSubAdmin}
+            canManageSubAdmins={canManageSubAdmins}
+            canForceWithdraw={canForceWithdraw}
+          />
+        ))}
       </div>
     </section>
   );
@@ -2409,29 +2449,54 @@ function SignupRequestRow({ request, approveSignupRequest, rejectSignupRequest, 
   );
 }
 
-function ForceWithdrawRow({ member, forceWithdraw }) {
+function ForceWithdrawRow({ member, forceWithdraw, toggleSubAdmin, canManageSubAdmins, canForceWithdraw }) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
+  const subAdmin = isSubAdminMember(member);
   return (
     <article className="admin-row">
       <div>
-        <strong>{memberLabel(member)} {psMark(member.status)}</strong>
+        <strong>{memberLabel(member)} {memberMarks(member)}</strong>
         <div className="badges">{(member.clubs || []).map((clubId) => <ClubBadge key={clubId} clubId={clubId} />)}</div>
       </div>
-      <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="탈퇴 사유" />
-      <button
-        type="button"
-        onClick={async () => {
-          setError("");
-          try {
-            await forceWithdraw(member, reason);
-          } catch (err) {
-            setError(err.message);
-          }
-        }}
-      >
-        강제 탈퇴
-      </button>
+      {canForceWithdraw ? (
+        <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="탈퇴 사유" />
+      ) : (
+        <small className="muted">부관리자는 강제 탈퇴를 사용할 수 없습니다.</small>
+      )}
+      <div className="button-row admin-member-actions">
+        {canManageSubAdmins && (
+          <button
+            className={subAdmin ? "primary" : ""}
+            type="button"
+            onClick={async () => {
+              setError("");
+              try {
+                await toggleSubAdmin(member);
+              } catch (err) {
+                setError(err.message);
+              }
+            }}
+          >
+            <Crown size={15} /> {subAdmin ? "부관리자 해제" : "부관리자 지정"}
+          </button>
+        )}
+        {canForceWithdraw && (
+          <button
+            type="button"
+            onClick={async () => {
+              setError("");
+              try {
+                await forceWithdraw(member, reason);
+              } catch (err) {
+                setError(err.message);
+              }
+            }}
+          >
+            강제 탈퇴
+          </button>
+        )}
+      </div>
       {error && <small className="danger">{error}</small>}
     </article>
   );
@@ -2471,15 +2536,11 @@ function PwReplyRow({ req, member, replyPwRequest }) {
   );
 }
 
-function AdminMessages({ members, messages = [], messageReads = [], sendMessage, markAdminMessagesRead, deleteMessage }) {
+function AdminMessages({ members, messages = [], messageReads = [], readerId = "admin", sendMessage, markAdminMessagesRead, deleteMessage }) {
   const [form, setForm] = useState({ recipientId: "all", title: "", content: "" });
   const [error, setError] = useState("");
   const incoming = messages.filter((message) => message.recipientId === "admin").sort(sortNewest);
-  const sent = messages.filter((message) => message.senderId === "admin").sort(sortNewest);
-
-  useEffect(() => {
-    markAdminMessagesRead?.(incoming).catch(console.warn);
-  }, [messages]);
+  const sent = messages.filter((message) => message.senderId === "admin" || message.senderRole === "subAdmin").sort(sortNewest);
 
   async function submit(event) {
     event.preventDefault();
@@ -2515,9 +2576,13 @@ function AdminMessages({ members, messages = [], messageReads = [], sendMessage,
           {incoming.length === 0 ? (
             <p className="empty">학생이 보낸 쪽지가 없습니다.</p>
           ) : incoming.map((message) => {
-            const unread = !isMessageRead(messageReads, "admin", message.id);
+            const unread = !isMessageRead(messageReads, readerId, message.id);
             return (
-            <article className={unread ? "post unread-message" : "post"} key={message.id}>
+            <article
+              className={unread ? "post unread-message clickable-message" : "post clickable-message"}
+              key={message.id}
+              onClick={() => markAdminMessagesRead?.([message]).catch(console.warn)}
+            >
               <div className="post-head">
                 <span className="global-badge">학생</span>
                 {unread && <span className="secret-badge">새 쪽지</span>}
@@ -2526,7 +2591,7 @@ function AdminMessages({ members, messages = [], messageReads = [], sendMessage,
               <p>{message.content}</p>
               <footer>
                 <span>{message.senderName} · {formatDateTime(message.createdAt)}</span>
-                <button type="button" onClick={() => deleteMessage(message)}><Trash2 size={15} /> 삭제</button>
+                <button type="button" onClick={(event) => { event.stopPropagation(); deleteMessage(message); }}><Trash2 size={15} /> 삭제</button>
               </footer>
             </article>
             );
@@ -2848,7 +2913,7 @@ function MemberTable({ members }) {
         <tbody>
           {members.map((member) => (
             <tr key={member.id}>
-              <td><strong>{memberLabel(member)}</strong> {psMark(member.status)}</td>
+              <td><strong>{memberLabel(member)}</strong> {memberMarks(member)}</td>
               <td>{member.studentYear}</td>
               <td>{genderLabel(member.gender)}</td>
               <td>{statusLabel(member.status)}</td>
@@ -3192,26 +3257,21 @@ function buildStats(data) {
   });
 }
 
-function formatRanking(stats, key, suffix) {
-  const sorted = [...stats].sort((a, b) => {
-    if (b[key] !== a[key]) return b[key] - a[key];
-    return a.club.name.localeCompare(b.club.name, "ko");
-  });
-  const groups = [];
-  for (const stat of sorted) {
-    const last = groups[groups.length - 1];
-    const item = `${stat.club.name}(${stat[key]}${suffix})`;
-    if (last && last.value === stat[key]) {
-      last.items.push(item);
-    } else {
-      groups.push({ value: stat[key], items: [item] });
-    }
-  }
-  return groups.map((group) => group.items.join(" = ")).join(" > ");
-}
-
 function memberLabel(member) {
   return `${member.name}(${String(member.studentYear || "").slice(2)})`;
+}
+
+function memberMarks(member) {
+  return (
+    <>
+      {psMark(member.status)}
+      {isSubAdminMember(member) && <span className="role-mark sub-admin-mark"><Crown size={12} /> 부관리자</span>}
+    </>
+  );
+}
+
+function isSubAdminMember(member) {
+  return member?.role === "subAdmin" || member?.isSubAdmin === true;
 }
 
 function psMark(status) {

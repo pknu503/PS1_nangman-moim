@@ -191,6 +191,44 @@ small {
   justify-content: flex-end;
 }
 
+.admin-session {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #7d4d00;
+  font-weight: 900;
+}
+
+.admin-session svg {
+  color: #d79a22;
+  fill: #ffd36a;
+}
+
+.mini-crown,
+.role-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: fit-content;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  vertical-align: middle;
+}
+
+.mini-crown,
+.sub-admin-mark {
+  color: #7d4d00;
+  background: #fff0bf;
+}
+
+.mini-crown svg,
+.sub-admin-mark svg {
+  color: #d79a22;
+  fill: #ffd36a;
+}
+
 .topbar button,
 .tabs button,
 .session button,
@@ -611,7 +649,17 @@ label,
 
 .unread-message {
   border-color: var(--pink);
-  background: var(--pink-soft);
+  background: #ffe7eb;
+  box-shadow: inset 4px 0 0 var(--pink);
+}
+
+.clickable-message {
+  cursor: pointer;
+}
+
+.clickable-message:focus-visible {
+  outline: 3px solid rgba(242, 139, 139, 0.4);
+  outline-offset: 2px;
 }
 
 .post footer {
@@ -790,8 +838,17 @@ label.inline {
   align-items: center;
 }
 
+.admin-member-actions {
+  justify-content: flex-end;
+}
+
 .danger {
   color: var(--danger);
+}
+
+.muted {
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .chart-grid {
