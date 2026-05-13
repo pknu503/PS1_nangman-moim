@@ -571,6 +571,19 @@ export default function App() {
     setMessage("관리자에게 쪽지를 보냈습니다.");
   }
 
+  async function sendPwRequestToSubAdmin(req, subAdminId) {
+    if (!isAdmin) throw new Error("비밀번호 요청 전달은 관리자만 할 수 있습니다.");
+    const subAdmin = data.members.find((member) => member.id === subAdminId && isSubAdminMember(member));
+    if (!subAdmin) throw new Error("전달할 부관리자를 선택해주세요.");
+    const member = findPwRequestMember(req, data.members);
+    const password = member?.password || req.resolvedPassword || "";
+    if (!password) throw new Error("전달할 비밀번호를 찾지 못했습니다.");
+    const item = buildPwRequestDelegateMessage(req, member, subAdmin, password);
+    setData((current) => ({ ...current, messages: [item, ...(current.messages || [])] }));
+    await fbPatch("messages", { [firebaseKey(item.id)]: cleanFirebase(item) });
+    setMessage(`${memberLabel(subAdmin)} 부관리자에게 비밀번호 확인 메시지를 보냈습니다.`);
+  }
+
   async function markMessagesRead(messages) {
     if (!sessionUser?.id || messages.length === 0) return;
     const unread = messages.filter((item) => !isMessageRead(data.messageReads || [], sessionUser.id, item.id));
@@ -1038,9 +1051,11 @@ export default function App() {
           updateRecord={updateRecord}
           forceWithdraw={forceWithdraw}
           toggleSubAdmin={toggleSubAdmin}
+          sendPwRequestToSubAdmin={sendPwRequestToSubAdmin}
           canManageSubAdmins={isAdmin}
           canApproveSignup={isAdmin}
           canForceWithdraw={isAdmin}
+          canDelegatePwRequest={isAdmin}
           refresh={() => refreshData()}
         />
       )}
@@ -2286,7 +2301,7 @@ function PwRequestPanel({ requests, submitPwRequest }) {
   );
 }
 
-function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, approveSignupRequest, rejectSignupRequest, restoreSignupRequest, updateRecord, forceWithdraw, toggleSubAdmin, canManageSubAdmins, canApproveSignup, canForceWithdraw, refresh }) {
+function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, approveSignupRequest, rejectSignupRequest, restoreSignupRequest, updateRecord, forceWithdraw, toggleSubAdmin, sendPwRequestToSubAdmin, canManageSubAdmins, canApproveSignup, canForceWithdraw, canDelegatePwRequest, refresh }) {
   const pendingPwCount = data.pwRequests.filter((req) => req.status === "pending").length;
   const pendingSignupCount = data.signupRequests.filter((req) => req.approvalStatus === "pending").length;
   const activeTab = !canApproveSignup && tab === "signup" ? "members" : tab;
@@ -2307,7 +2322,17 @@ function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyP
       </div>
       {activeTab === "members" && <AdminMembers members={data.members} forceWithdraw={forceWithdraw} toggleSubAdmin={toggleSubAdmin} canManageSubAdmins={canManageSubAdmins} canForceWithdraw={canForceWithdraw} />}
       {activeTab === "signup" && canApproveSignup && <AdminSignupRequests requests={data.signupRequests} approveSignupRequest={approveSignupRequest} rejectSignupRequest={rejectSignupRequest} restoreSignupRequest={restoreSignupRequest} />}
-      {activeTab === "pw" && <AdminPwRequests requests={data.pwRequests} members={data.members} replyPwRequest={replyPwRequest} />}
+      {activeTab === "pw" && (
+        <AdminPwRequests
+          requests={data.pwRequests}
+          members={data.members}
+          messages={data.messages || []}
+          replyPwRequest={replyPwRequest}
+          sendPwRequestToSubAdmin={sendPwRequestToSubAdmin}
+          deleteMessage={(item) => deleteRecord("messages", item)}
+          canDelegatePwRequest={canDelegatePwRequest}
+        />
+      )}
       {activeTab === "resources" && <AdminResources resources={data.resources} addResource={addResource} deleteResource={(item) => deleteRecord("resources", item)} />}
       {activeTab === "posts" && (
         <>
@@ -2520,30 +2545,56 @@ function ForceWithdrawRow({ member, forceWithdraw, toggleSubAdmin, canManageSubA
   );
 }
 
-function AdminPwRequests({ requests, members, replyPwRequest }) {
+function AdminPwRequests({ requests, members, messages = [], replyPwRequest, sendPwRequestToSubAdmin, deleteMessage, canDelegatePwRequest }) {
   if (requests.length === 0) return <section className="panel"><p className="empty">비밀번호 요청이 없습니다.</p></section>;
+  const subAdmins = members.filter(isSubAdminMember);
   return (
     <section className="panel">
       <h2><KeyRound size={19} /> 비밀번호 요청</h2>
       <div className="cards">
         {requests.map((req) => {
           const member = findPwRequestMember(req, members);
-          return <PwReplyRow key={req.id} req={req} member={member} replyPwRequest={replyPwRequest} />;
+          const delegatedMessages = messages
+            .filter((message) => message.scope === "pwRequestDelegate" && message.relatedPwRequestId === req.id)
+            .sort(sortNewest);
+          return (
+            <PwReplyRow
+              key={req.id}
+              req={req}
+              member={member}
+              subAdmins={subAdmins}
+              delegatedMessages={delegatedMessages}
+              replyPwRequest={replyPwRequest}
+              sendPwRequestToSubAdmin={sendPwRequestToSubAdmin}
+              deleteMessage={deleteMessage}
+              canDelegatePwRequest={canDelegatePwRequest}
+            />
+          );
         })}
       </div>
     </section>
   );
 }
 
-function PwReplyRow({ req, member, replyPwRequest }) {
+function PwReplyRow({ req, member, subAdmins, delegatedMessages, replyPwRequest, sendPwRequestToSubAdmin, deleteMessage, canDelegatePwRequest }) {
   const password = member?.password || req.resolvedPassword || "";
-  const [reply, setReply] = useState(password ? `현재 비밀번호는 ${password} 입니다.` : "");
+  const [subAdminId, setSubAdminId] = useState(subAdmins[0]?.id || "");
+  const [delegateError, setDelegateError] = useState("");
 
   useEffect(() => {
-    if (req.status === "pending" && password && !reply.trim()) {
-      setReply(`현재 비밀번호는 ${password} 입니다.`);
+    if (!subAdmins.some((subAdmin) => subAdmin.id === subAdminId)) {
+      setSubAdminId(subAdmins[0]?.id || "");
     }
-  }, [password, reply, req.status]);
+  }, [subAdminId, subAdmins]);
+
+  async function delegatePassword() {
+    setDelegateError("");
+    try {
+      await sendPwRequestToSubAdmin(req, subAdminId);
+    } catch (err) {
+      setDelegateError(err.message || "부관리자에게 전달하지 못했습니다.");
+    }
+  }
 
   return (
     <article className="post">
@@ -2551,10 +2602,45 @@ function PwReplyRow({ req, member, replyPwRequest }) {
       {req.message && <p>요청 메시지: {req.message}</p>}
       <p>관리자 확인 비밀번호: <strong>{password || "탈퇴/미확인 회원"}</strong></p>
       {!member && req.resolvedPassword && <small className="notice">회원 목록에서 찾지 못해 요청 당시 저장된 비밀번호를 표시합니다.</small>}
+      {canDelegatePwRequest && (
+        <div className="pw-delegate-box">
+          <strong>부관리자에게 비밀번호 전달</strong>
+          {subAdmins.length === 0 ? (
+            <small className="muted">지정된 부관리자가 없습니다. 회원 관리에서 부관리자를 먼저 지정해주세요.</small>
+          ) : (
+            <div className="inline-form pw-delegate-form">
+              <select value={subAdminId} onChange={(event) => setSubAdminId(event.target.value)}>
+                {subAdmins.map((subAdmin) => (
+                  <option key={subAdmin.id} value={subAdmin.id}>{memberLabel(subAdmin)}</option>
+                ))}
+              </select>
+              <button className="primary" type="button" onClick={delegatePassword}>부관리자에게 전달</button>
+            </div>
+          )}
+          {delegateError && <small className="danger">{delegateError}</small>}
+        </div>
+      )}
+      {delegatedMessages.length > 0 && (
+        <div className="message-section pw-delegate-history">
+          <h3>부관리자 전달 내역</h3>
+          {delegatedMessages.map((message) => (
+            <article className="post" key={message.id}>
+              <div className="post-head">
+                <span className="global-badge">전달 완료</span>
+                <strong>{message.recipientName}</strong>
+              </div>
+              <p>{message.content}</p>
+              <footer>
+                <span>{formatDateTime(message.createdAt)}</span>
+                {canDelegatePwRequest && <button type="button" onClick={() => deleteMessage(message)}><Trash2 size={15} /> 삭제</button>}
+              </footer>
+            </article>
+          ))}
+        </div>
+      )}
       {req.status === "pending" ? (
-        <div className="inline-form">
-          <input value={reply} onChange={(event) => setReply(event.target.value)} placeholder="학생에게 전달할 답변" />
-          <button className="primary" type="button" onClick={() => replyPwRequest(req, reply)}>답변 보내기</button>
+        <div className="button-row">
+          <button className="primary" type="button" onClick={() => replyPwRequest(req, "비밀번호 요청이 관리자에게 확인되었습니다.")}>요청 처리 완료</button>
         </div>
       ) : (
         <p>답변: {req.adminReply}</p>
@@ -3264,6 +3350,33 @@ function buildPwRequestAdminMessage(req, member) {
     senderRole: "system",
     relatedPwRequestId: req.id,
     createdAt: req.createdAt || now(),
+  };
+}
+
+function buildPwRequestDelegateMessage(req, member, subAdmin, password) {
+  const requester = member ? memberLabel(member) : `${req.memberName}(${String(req.studentYear || "").slice(2)})`;
+  const content = [
+    `${requester} 학생의 비밀번호 요청을 전달합니다.`,
+    `현재 비밀번호: ${password}`,
+    req.message ? `요청 메시지: ${req.message}` : "",
+    "학생에게 직접 자동 발송된 내용이 아니며, 선택된 부관리자에게만 전달됩니다.",
+  ].filter(Boolean).join("\n");
+
+  return {
+    id: makeId("message"),
+    recipientId: subAdmin.id,
+    recipientName: memberLabel(subAdmin),
+    scope: "pwRequestDelegate",
+    title: `비밀번호 확인 전달: ${requester}`,
+    content,
+    senderId: "admin",
+    senderName: "관리자",
+    senderRole: "admin",
+    relatedPwRequestId: req.id,
+    targetMemberId: member?.id || req.memberId || "",
+    targetMemberName: req.memberName,
+    targetStudentYear: req.studentYear,
+    createdAt: now(),
   };
 }
 

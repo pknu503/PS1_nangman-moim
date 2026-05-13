@@ -1179,6 +1179,29 @@ label.inline {
   white-space: pre-line;
 }
 
+.clickable-message p,
+.pw-delegate-history .post p {
+  white-space: pre-line;
+}
+
+.pw-delegate-box {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  background: var(--pink-soft);
+}
+
+.pw-delegate-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-bottom: 0;
+}
+
+.pw-delegate-history {
+  margin-top: 4px;
+}
+
 .line-memo-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
