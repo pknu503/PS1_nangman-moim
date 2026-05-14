@@ -94,6 +94,8 @@ const REACTION_TYPES = [
   { type: "smile", label: "웃음", Icon: Smile },
   { type: "thumb", label: "엄지척", Icon: ThumbsUp },
 ];
+const AUTO_REFRESH_MS = 60000;
+const MAX_DB_FILE_BYTES = 350 * 1024;
 const EMPTY_DATA = {
   members: [],
   posts: [],
@@ -124,6 +126,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const dataRef = useRef(data);
   const userRef = useRef(user);
   const adminRef = useRef(isAdmin);
 
@@ -138,6 +141,7 @@ export default function App() {
   }, [isAdmin]);
 
   useEffect(() => {
+    dataRef.current = data;
     saveLocalData(data);
   }, [data]);
 
@@ -149,8 +153,9 @@ export default function App() {
     if (!user) return undefined;
     const timer = window.setInterval(() => {
       if (isEditingField()) return;
-      refreshData({ silent: true });
-    }, 8000);
+      if (document.visibilityState === "hidden") return;
+      refreshData({ silent: true, lightweight: true });
+    }, AUTO_REFRESH_MS);
     return () => window.clearInterval(timer);
   }, [user]);
 
@@ -181,11 +186,19 @@ export default function App() {
   const pendingSignupCount = data.signupRequests.filter((req) => req.approvalStatus === "pending").length;
   const adminNoticeCount = pendingPwCount + (isAdmin ? pendingSignupCount : 0);
 
-  async function refreshData({ silent = false } = {}) {
+  async function refreshData({ silent = false, lightweight = false } = {}) {
     if (!silent) setLoading(true);
     try {
-      const remote = await fetchRemoteData();
-      const fixed = reconcileSession(remote, userRef.current, adminRef.current);
+      const remote = await fetchRemoteData({ includeFiles: !lightweight });
+      const currentData = dataRef.current || EMPTY_DATA;
+      const mergedRemote = lightweight
+        ? {
+            ...remote,
+            outputs: currentData.outputs || [],
+            resources: currentData.resources || [],
+          }
+        : remote;
+      const fixed = reconcileSession(mergedRemote, userRef.current, adminRef.current);
       setData(fixed.data);
       if (fixed.user !== userRef.current) setUser(fixed.user);
       if (fixed.repairMember) {
@@ -195,7 +208,7 @@ export default function App() {
     } catch (err) {
       console.error(err);
       if (!silent) setError("Firebase 데이터를 불러오지 못했습니다.");
-      return data;
+      return dataRef.current;
     } finally {
       if (!silent) setLoading(false);
     }
@@ -1891,6 +1904,10 @@ function OutputComposer({ addOutput }) {
   async function onFile(event) {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!checkDatabaseFileSize(file)) {
+      event.target.value = "";
+      return;
+    }
     const fileUrl = await readFileAsDataUrl(file);
     setForm((current) => ({
       ...current,
@@ -2769,6 +2786,10 @@ function AdminResources({ resources, addResource, deleteResource }) {
   async function onFile(event) {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!checkDatabaseFileSize(file)) {
+      event.target.value = "";
+      return;
+    }
     const imageUrl = await readFileAsDataUrl(file);
     setForm((current) => ({ ...current, type: "사진", imageUrl }));
   }
@@ -3482,7 +3503,7 @@ function getReactionDefinition(type) {
   return REACTION_TYPES.find((item) => item.type === type) || REACTION_TYPES[0];
 }
 
-async function fetchRemoteData() {
+async function fetchRemoteData({ includeFiles = true } = {}) {
   const [members, posts, promos, schedules, events, attendance, outputs, resources, messages, messageReads, pwRequests, signupRequests, withdrawals] = await Promise.all([
     fbGet("members"),
     fbGet("posts"),
@@ -3490,8 +3511,8 @@ async function fetchRemoteData() {
     fbGet("schedules"),
     fbGet("events"),
     fbGet("attendance"),
-    fbGet("outputs"),
-    fbGet("resources"),
+    includeFiles ? fbGet("outputs") : Promise.resolve(undefined),
+    includeFiles ? fbGet("resources") : Promise.resolve(undefined),
     fbGet("messages"),
     fbGet("messageReads"),
     fbGet("pwRequests"),
@@ -3506,8 +3527,8 @@ async function fetchRemoteData() {
     schedules: toArray(schedules).sort(sortNewest),
     events: toArray(events).sort(sortNewest),
     attendance: toArray(attendance, "key"),
-    outputs: toArray(outputs).sort(sortNewest),
-    resources: toArray(resources).sort(sortNewest),
+    outputs: includeFiles ? toArray(outputs).sort(sortNewest) : [],
+    resources: includeFiles ? toArray(resources).sort(sortNewest) : [],
     messages: toArray(messages).sort(sortNewest),
     messageReads: toArray(messageReads, "key"),
     pwRequests: toArray(pwRequests).sort(sortNewest),
@@ -3929,6 +3950,13 @@ function formatDateTime(value) {
 function isEditingField() {
   const active = document.activeElement;
   return active && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName);
+}
+
+function checkDatabaseFileSize(file) {
+  if (file.size <= MAX_DB_FILE_BYTES) return true;
+  const limitKb = Math.round(MAX_DB_FILE_BYTES / 1024);
+  window.alert(`Firebase 다운로드 사용량을 줄이기 위해 첨부파일은 ${limitKb}KB 이하만 올릴 수 있습니다. 큰 파일은 링크로 공유해주세요.`);
+  return false;
 }
 
 function readFileAsDataUrl(file) {
