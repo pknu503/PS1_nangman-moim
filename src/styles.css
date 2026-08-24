@@ -845,6 +845,142 @@ label.inline {
   align-items: center;
 }
 
+.room-panel {
+  border-color: #d7e1f4;
+  background:
+    linear-gradient(135deg, rgba(234, 241, 251, 0.72), rgba(255, 255, 255, 0.96)),
+    #fff;
+}
+
+.room-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.room-head p {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.week-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.week-controls button {
+  width: 38px;
+  min-height: 38px;
+  padding: 0;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: #fff;
+}
+
+.room-quota-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.room-quota-card {
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  border: 1.5px solid color-mix(in srgb, var(--group) 28%, #fff);
+  border-radius: 10px;
+  background: var(--group-bg);
+}
+
+.room-quota-card strong {
+  color: var(--group);
+  font-size: 18px;
+}
+
+.room-form {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.8fr) minmax(140px, 0.9fr) minmax(120px, 0.7fr) minmax(100px, 0.6fr) minmax(180px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.room-schedule {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.room-schedule h3,
+.room-my-list h3 {
+  margin-bottom: 0;
+}
+
+.room-week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.room-day {
+  display: grid;
+  align-content: flex-start;
+  gap: 8px;
+  min-height: 122px;
+  padding: 10px;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.room-day > strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.room-day > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.room-slot {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border-left: 4px solid var(--group);
+  border-radius: 8px;
+  background: var(--group-bg);
+}
+
+.room-slot b {
+  color: var(--group);
+  font-size: 13px;
+}
+
+.room-my-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.room-review-row {
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.6fr) auto;
+}
+
+.room-badge {
+  width: fit-content;
+}
+
 .admin-member-actions {
   justify-content: flex-end;
 }
@@ -1318,6 +1454,7 @@ th {
   .club-hero,
   .profile,
   .toolbar,
+  .room-head,
   .attendance-row,
   .admin-row,
   .inline-form {
@@ -1337,8 +1474,18 @@ th {
   .chart-grid,
   .graph-grid,
   .compare-bars,
+  .room-quota-grid,
+  .room-form,
   .resource-grid {
     grid-template-columns: 1fr;
+  }
+
+  .room-week-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .week-controls {
+    justify-content: flex-start;
   }
 
   .club-grid,
@@ -1398,5 +1545,11 @@ th {
 
   .comparison-line b {
     text-align: left;
+  }
+}
+
+@media (max-width: 560px) {
+  .room-week-grid {
+    grid-template-columns: 1fr;
   }
 }

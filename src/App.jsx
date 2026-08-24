@@ -52,6 +52,7 @@ const STORAGE = {
   messageReads: "nm_message_reads",
   pwRequests: "nm_pwreq",
   signupRequests: "nm_signup_requests",
+  roomReservations: "nm_room_reservations",
   withdrawals: "nm_withdrawals",
 };
 
@@ -89,6 +90,13 @@ const CLUBS = {
 };
 
 const CLUB_LIST = Object.values(CLUBS);
+const ROOM_GROUPS = [
+  { id: "hora", name: "오라", color: CLUBS.hora.color, bg: CLUBS.hora.bg },
+  { id: "myth", name: "클럽신화", color: CLUBS.myth.color, bg: CLUBS.myth.bg },
+  { id: "theme", name: "띰", color: CLUBS.theme.color, bg: CLUBS.theme.bg },
+  { id: "studentAssistant", name: "학생조교", color: "#2f855a", bg: "#ecfdf3" },
+  { id: "jajeon", name: "자전모임", color: "#5f6caf", bg: "#eef2ff" },
+];
 const REACTION_TYPES = [
   { type: "heart", label: "하트", Icon: Heart },
   { type: "smile", label: "웃음", Icon: Smile },
@@ -96,6 +104,10 @@ const REACTION_TYPES = [
 ];
 const AUTO_REFRESH_MS = 60000;
 const MAX_DB_FILE_BYTES = 350 * 1024;
+const ROOM_START_HOUR = 8;
+const ROOM_END_HOUR = 24;
+const ROOM_WEEKLY_LIMIT = 30;
+const WEEKDAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"];
 const EMPTY_DATA = {
   members: [],
   posts: [],
@@ -109,6 +121,7 @@ const EMPTY_DATA = {
   messageReads: [],
   pwRequests: [],
   signupRequests: [],
+  roomReservations: [],
   withdrawals: [],
 };
 
@@ -184,7 +197,8 @@ export default function App() {
   const unreadAdminMessageCount = canAdmin ? adminMessages.filter((item) => !isMessageRead(data.messageReads || [], adminReaderId, item.id)).length : 0;
   const pendingPwCount = data.pwRequests.filter((req) => req.status === "pending").length;
   const pendingSignupCount = data.signupRequests.filter((req) => req.approvalStatus === "pending").length;
-  const adminNoticeCount = pendingPwCount + (isAdmin ? pendingSignupCount : 0);
+  const pendingRoomReservationCount = (data.roomReservations || []).filter((req) => req.approvalStatus === "pending").length;
+  const adminNoticeCount = pendingPwCount + pendingRoomReservationCount + (isAdmin ? pendingSignupCount : 0);
 
   async function refreshData({ silent = false, lightweight = false } = {}) {
     if (!silent) setLoading(true);
@@ -418,6 +432,91 @@ export default function App() {
     if (!form.title.trim() || !form.content.trim()) return;
     setData((current) => ({ ...current, promos: [...newPromos, ...current.promos] }));
     await fbPatch("promos", Object.fromEntries(newPromos.map((item) => [firebaseKey(item.id), cleanFirebase(item)])));
+  }
+
+  async function addRoomReservation(form) {
+    clearAlerts();
+    if (!sessionUser?.id) return;
+    setLoading(true);
+    try {
+      const latest = await fetchRemoteData({ includeFiles: false }).catch(() => dataRef.current || data);
+      const normalized = normalizeRoomReservationForm(form);
+      validateRoomReservation(normalized, latest.roomReservations || [], {
+        statuses: ["pending", "approved"],
+      });
+      const group = roomGroup(normalized.groupId);
+      const item = {
+        id: makeId("room638"),
+        ...normalized,
+        groupName: group.name,
+        weekStart: weekStartKey(normalized.date),
+        requesterId: isAdmin ? "admin" : sessionUser.id,
+        requesterName: isAdmin ? "관리자" : sessionUser.name,
+        requesterStudentYear: isAdmin ? "" : sessionUser.studentYear,
+        approvalStatus: "pending",
+        requestedAt: now(),
+        createdAt: now(),
+      };
+      setData((current) => ({
+        ...current,
+        roomReservations: [item, ...(current.roomReservations || [])],
+      }));
+      await fbPatch("roomReservations", { [firebaseKey(item.id)]: cleanFirebase(item) });
+      setMessage("638 실습실 예약 신청이 전송되었습니다. 관리자 또는 부관리자 승인 후 현황에 표시됩니다.");
+      return true;
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "638 실습실 예약 신청을 저장하지 못했습니다.");
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function approveRoomReservation(req) {
+    if (!canAdmin) throw new Error("638 예약 승인은 관리자 또는 부관리자만 할 수 있습니다.");
+    const latest = await fetchRemoteData({ includeFiles: false }).catch(() => dataRef.current || data);
+    const normalized = normalizeRoomReservationForm(req);
+    validateRoomReservation(normalized, latest.roomReservations || [], {
+      statuses: ["approved"],
+      excludeId: req.id,
+    });
+    const updated = {
+      ...req,
+      ...normalized,
+      groupName: roomGroup(normalized.groupId).name,
+      weekStart: weekStartKey(normalized.date),
+      approvalStatus: "approved",
+      reviewedAt: now(),
+      reviewedBy: isAdmin ? "관리자" : sessionUser.name,
+      reviewerId: isAdmin ? "admin" : sessionUser.id,
+      updatedAt: now(),
+    };
+    setData((current) => ({
+      ...current,
+      roomReservations: upsertById(current.roomReservations || [], updated),
+    }));
+    await fbPatch("roomReservations", { [firebaseRecordKey(req, req.id)]: cleanFirebase(updated) });
+    setMessage(`${roomGroup(updated.groupId).name}의 638 실습실 예약을 승인했습니다.`);
+  }
+
+  async function rejectRoomReservation(req, reason) {
+    if (!canAdmin) throw new Error("638 예약 처리는 관리자 또는 부관리자만 할 수 있습니다.");
+    const updated = {
+      ...req,
+      approvalStatus: "rejected",
+      rejectReason: reason.trim() || "승인자 거부",
+      reviewedAt: now(),
+      reviewedBy: isAdmin ? "관리자" : sessionUser.name,
+      reviewerId: isAdmin ? "admin" : sessionUser.id,
+      updatedAt: now(),
+    };
+    setData((current) => ({
+      ...current,
+      roomReservations: upsertById(current.roomReservations || [], updated),
+    }));
+    await fbPatch("roomReservations", { [firebaseRecordKey(req, req.id)]: cleanFirebase(updated) });
+    setMessage("638 실습실 예약 신청을 거부했습니다.");
   }
 
   async function updateRecord(collection, record, changes) {
@@ -1002,6 +1101,7 @@ export default function App() {
           deletePromo={(promo) => deleteRecord("promos", promo)}
           updatePromo={(promo, changes) => updateRecord("promos", promo, changes)}
           toggleReaction={(promo, type) => toggleReaction("promos", promo, type)}
+          addRoomReservation={addRoomReservation}
         />
       )}
       {page === "integrated" && (
@@ -1086,6 +1186,8 @@ export default function App() {
           forceWithdraw={forceWithdraw}
           toggleSubAdmin={toggleSubAdmin}
           sendPwRequestToSubAdmin={sendPwRequestToSubAdmin}
+          approveRoomReservation={approveRoomReservation}
+          rejectRoomReservation={rejectRoomReservation}
           canManageSubAdmins={isAdmin}
           canApproveSignup={isAdmin}
           canForceWithdraw={isAdmin}
@@ -1271,7 +1373,7 @@ function RegisterForm({ register, loading }) {
   );
 }
 
-function HomePage({ data, isAdmin, user, myClubIds, openClub, addPromo, deletePromo, updatePromo, toggleReaction }) {
+function HomePage({ data, isAdmin, user, myClubIds, openClub, addPromo, deletePromo, updatePromo, toggleReaction, addRoomReservation }) {
   const writableClubs = isAdmin ? CLUB_LIST : CLUB_LIST.filter((club) => user.clubs?.includes(club.id));
   const visiblePromos = getHomePromos(
     isAdmin ? data.promos : data.promos.filter((promo) => myClubIds.includes(promo.clubId)),
@@ -1290,6 +1392,12 @@ function HomePage({ data, isAdmin, user, myClubIds, openClub, addPromo, deletePr
         </div>
       </section>
 
+      <RoomReservationPanel
+        reservations={data.roomReservations || []}
+        user={user}
+        addRoomReservation={addRoomReservation}
+      />
+
       {writableClubs.length > 0 && (
         <PromoComposer writableClubs={writableClubs} addPromo={addPromo} />
       )}
@@ -1300,6 +1408,180 @@ function HomePage({ data, isAdmin, user, myClubIds, openClub, addPromo, deletePr
       </section>
     </div>
   );
+}
+
+function RoomReservationPanel({ reservations, user, addRoomReservation }) {
+  const [weekStart, setWeekStart] = useState(weekStartKey(todayKey()));
+  const [form, setForm] = useState({
+    groupId: "hora",
+    date: todayKey(),
+    startHour: "18",
+    duration: "1",
+    purpose: "",
+  });
+  const formWeekStart = weekStartKey(form.date);
+  const duration = Number(form.duration || 1);
+  const selectedRemaining = roomRemainingHours(reservations, form.groupId, formWeekStart, ["pending", "approved"]);
+  const selectedGroup = roomGroup(form.groupId);
+  const myReservations = (reservations || [])
+    .filter((item) => item.requesterId === user?.id || (user?.id === "admin" && item.requesterId === "admin"))
+    .filter((item) => reservationWeekStart(item) === weekStart)
+    .sort(sortRoomReservation);
+
+  function moveWeek(delta) {
+    setWeekStart(addDaysKey(weekStart, delta * 7));
+  }
+
+  function changeDate(date) {
+    setForm((current) => ({ ...current, date }));
+    if (date) setWeekStart(weekStartKey(date));
+  }
+
+  function changeStartHour(startHour) {
+    const maxDuration = ROOM_END_HOUR - Number(startHour);
+    setForm((current) => ({
+      ...current,
+      startHour,
+      duration: String(Math.min(Number(current.duration || 1), maxDuration)),
+    }));
+  }
+
+  return (
+    <section className="panel room-panel">
+      <div className="room-head">
+        <div>
+          <h2><CalendarDays size={19} /> 638 사회복지실습실 예약</h2>
+          <p>매일 08:00-24:00, 1시간 단위 예약. 단체별 주 최대 {ROOM_WEEKLY_LIMIT}시간까지 신청할 수 있습니다.</p>
+        </div>
+        <div className="week-controls">
+          <button type="button" onClick={() => moveWeek(-1)} aria-label="이전 주"><ChevronLeft size={17} /></button>
+          <strong>{formatDate(weekStart)} 주</strong>
+          <button type="button" onClick={() => moveWeek(1)} aria-label="다음 주"><ChevronRight size={17} /></button>
+        </div>
+      </div>
+
+      <RoomQuotaSummary reservations={reservations} weekStart={weekStart} />
+
+      <form
+        className="room-form"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const saved = await addRoomReservation(form);
+          if (saved) setForm((current) => ({ ...current, purpose: "" }));
+        }}
+      >
+        <label>
+          대표 단체
+          <select value={form.groupId} onChange={(event) => setForm({ ...form, groupId: event.target.value })}>
+            {ROOM_GROUPS.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+          </select>
+        </label>
+        <label>
+          예약일
+          <input type="date" value={form.date} onChange={(event) => changeDate(event.target.value)} />
+        </label>
+        <label>
+          시작 시간
+          <select value={form.startHour} onChange={(event) => changeStartHour(event.target.value)}>
+            {roomStartHours().map((hour) => <option key={hour} value={hour}>{hourLabel(hour)}</option>)}
+          </select>
+        </label>
+        <label>
+          이용 시간
+          <select value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })}>
+            {roomDurationOptions(Number(form.startHour)).map((hours) => <option key={hours} value={hours}>{hours}시간</option>)}
+          </select>
+        </label>
+        <input value={form.purpose} onChange={(event) => setForm({ ...form, purpose: event.target.value })} placeholder="사용 목적 또는 메모" />
+        <button className="primary" type="submit"><Plus size={17} /> 예약 신청</button>
+      </form>
+
+      {selectedRemaining < duration && (
+        <div className="alert error">
+          {selectedGroup.name}은 선택한 주에 {Math.max(0, selectedRemaining)}시간만 남았습니다.
+        </div>
+      )}
+
+      <RoomWeekSchedule reservations={reservations} weekStart={weekStart} />
+
+      {myReservations.length > 0 && (
+        <div className="room-my-list">
+          <h3>내 예약 신청</h3>
+          <div className="cards">
+            {myReservations.map((item) => (
+              <article className="post" key={item.id}>
+                <div className="post-head">
+                  <RoomGroupBadge groupId={item.groupId} />
+                  <span className={item.approvalStatus === "approved" ? "global-badge" : "secret-badge"}>{reservationStatusLabel(item.approvalStatus)}</span>
+                </div>
+                <strong>{formatDate(item.date)} {roomTimeRange(item)}</strong>
+                <p>{item.purpose || "사용 목적 없음"}</p>
+                {item.rejectReason && <small className="danger">거부 사유: {item.rejectReason}</small>}
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RoomQuotaSummary({ reservations, weekStart }) {
+  return (
+    <div className="room-quota-grid">
+      {ROOM_GROUPS.map((group) => {
+        const approved = roomGroupHours(reservations, group.id, weekStart, ["approved"]);
+        const active = roomGroupHours(reservations, group.id, weekStart, ["pending", "approved"]);
+        const remaining = Math.max(0, ROOM_WEEKLY_LIMIT - active);
+        return (
+          <article className="room-quota-card" key={group.id} style={{ "--group": group.color, "--group-bg": group.bg }}>
+            <RoomGroupBadge groupId={group.id} />
+            <strong>{remaining}시간 남음</strong>
+            <div className="bar"><span style={{ width: `${Math.min(100, Math.round((active / ROOM_WEEKLY_LIMIT) * 100))}%`, background: group.color }} /></div>
+            <small>승인 {approved}시간 · 승인대기 포함 {active}시간 / {ROOM_WEEKLY_LIMIT}시간</small>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function RoomWeekSchedule({ reservations, weekStart }) {
+  const days = weekDays(weekStart);
+  const approved = (reservations || [])
+    .filter((item) => item.approvalStatus === "approved")
+    .filter((item) => reservationWeekStart(item) === weekStart)
+    .sort(sortRoomReservation);
+
+  return (
+    <div className="room-schedule">
+      <h3>승인된 예약 현황</h3>
+      <div className="room-week-grid">
+        {days.map((date, index) => {
+          const dayItems = approved.filter((item) => item.date === date);
+          return (
+            <article className="room-day" key={date}>
+              <strong>{WEEKDAY_LABELS[index]} · {date.slice(5).replace("-", ".")}</strong>
+              {dayItems.length === 0 ? (
+                <span>예약 없음</span>
+              ) : dayItems.map((item) => (
+                <div className="room-slot" key={item.id} style={{ "--group": roomGroup(item.groupId).color, "--group-bg": roomGroup(item.groupId).bg }}>
+                  <RoomGroupBadge groupId={item.groupId} />
+                  <b>{roomTimeRange(item)}</b>
+                  <small>{item.requesterName}{item.purpose ? ` · ${item.purpose}` : ""}</small>
+                </div>
+              ))}
+            </article>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RoomGroupBadge({ groupId }) {
+  const group = roomGroup(groupId);
+  return <span className="badge room-badge" style={{ "--club": group.color, "--club-bg": group.bg }}>{group.name}</span>;
 }
 
 function PromoComposer({ writableClubs, addPromo }) {
@@ -2342,9 +2624,10 @@ function PwRequestPanel({ requests, submitPwRequest }) {
   );
 }
 
-function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, approveSignupRequest, rejectSignupRequest, restoreSignupRequest, updateRecord, forceWithdraw, toggleSubAdmin, sendPwRequestToSubAdmin, canManageSubAdmins, canApproveSignup, canForceWithdraw, canDelegatePwRequest, canDownloadExcel, downloadExcelData, excelLoading, refresh }) {
+function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, approveSignupRequest, rejectSignupRequest, restoreSignupRequest, updateRecord, forceWithdraw, toggleSubAdmin, sendPwRequestToSubAdmin, approveRoomReservation, rejectRoomReservation, canManageSubAdmins, canApproveSignup, canForceWithdraw, canDelegatePwRequest, canDownloadExcel, downloadExcelData, excelLoading, refresh }) {
   const pendingPwCount = data.pwRequests.filter((req) => req.status === "pending").length;
   const pendingSignupCount = data.signupRequests.filter((req) => req.approvalStatus === "pending").length;
+  const pendingRoomCount = (data.roomReservations || []).filter((req) => req.approvalStatus === "pending").length;
   const activeTab = !canApproveSignup && tab === "signup" ? "members" : tab;
   return (
     <div className="stack">
@@ -2362,6 +2645,7 @@ function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyP
       <div className="tabs">
         <button className={activeTab === "members" ? "active" : ""} type="button" onClick={() => setTab("members")}>회원</button>
         {canApproveSignup && <button className={activeTab === "signup" ? "active" : ""} type="button" onClick={() => setTab("signup")}>가입신청 {pendingSignupCount || ""}</button>}
+        <button className={activeTab === "room638" ? "active" : ""} type="button" onClick={() => setTab("room638")}>638예약 {pendingRoomCount || ""}</button>
         <button className={activeTab === "pw" ? "active" : ""} type="button" onClick={() => setTab("pw")}>비번요청 {pendingPwCount || ""}</button>
         <button className={activeTab === "resources" ? "active" : ""} type="button" onClick={() => setTab("resources")}>자료</button>
         <button className={activeTab === "posts" ? "active" : ""} type="button" onClick={() => setTab("posts")}>게시판</button>
@@ -2370,6 +2654,7 @@ function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyP
       </div>
       {activeTab === "members" && <AdminMembers members={data.members} forceWithdraw={forceWithdraw} toggleSubAdmin={toggleSubAdmin} canManageSubAdmins={canManageSubAdmins} canForceWithdraw={canForceWithdraw} />}
       {activeTab === "signup" && canApproveSignup && <AdminSignupRequests requests={data.signupRequests} approveSignupRequest={approveSignupRequest} rejectSignupRequest={rejectSignupRequest} restoreSignupRequest={restoreSignupRequest} />}
+      {activeTab === "room638" && <AdminRoomReservations reservations={data.roomReservations || []} approveRoomReservation={approveRoomReservation} rejectRoomReservation={rejectRoomReservation} deleteReservation={(item) => deleteRecord("roomReservations", item)} />}
       {activeTab === "pw" && (
         <AdminPwRequests
           requests={data.pwRequests}
@@ -2446,6 +2731,123 @@ function AdminSignupRequests({ requests, approveSignupRequest, rejectSignupReque
         ))}
       </div>
     </section>
+  );
+}
+
+function AdminRoomReservations({ reservations, approveRoomReservation, rejectRoomReservation, deleteReservation }) {
+  const [weekStart, setWeekStart] = useState(weekStartKey(todayKey()));
+  const sorted = [...(reservations || [])].sort((a, b) => {
+    if (a.approvalStatus === "pending" && b.approvalStatus !== "pending") return -1;
+    if (a.approvalStatus !== "pending" && b.approvalStatus === "pending") return 1;
+    return sortRoomReservation(a, b);
+  });
+  const weekItems = sorted.filter((item) => reservationWeekStart(item) === weekStart);
+  const pending = sorted.filter((item) => item.approvalStatus === "pending");
+
+  return (
+    <section className="panel">
+      <div className="room-head">
+        <div>
+          <h2><CalendarDays size={19} /> 638 실습실 예약 승인</h2>
+          <p>승인 시 같은 시간대 중복과 단체별 주 {ROOM_WEEKLY_LIMIT}시간 제한을 다시 검사합니다.</p>
+        </div>
+        <div className="week-controls">
+          <button type="button" onClick={() => setWeekStart(addDaysKey(weekStart, -7))} aria-label="이전 주"><ChevronLeft size={17} /></button>
+          <strong>{formatDate(weekStart)} 주</strong>
+          <button type="button" onClick={() => setWeekStart(addDaysKey(weekStart, 7))} aria-label="다음 주"><ChevronRight size={17} /></button>
+        </div>
+      </div>
+
+      <RoomQuotaSummary reservations={reservations} weekStart={weekStart} />
+      <RoomWeekSchedule reservations={reservations} weekStart={weekStart} />
+
+      <h3>승인 대기 {pending.length}건</h3>
+      <div className="cards">
+        {pending.length === 0 ? (
+          <p className="empty">승인 대기 중인 예약이 없습니다.</p>
+        ) : pending.map((item) => (
+          <RoomReservationReviewRow
+            key={item.id}
+            item={item}
+            approveRoomReservation={approveRoomReservation}
+            rejectRoomReservation={rejectRoomReservation}
+            deleteReservation={deleteReservation}
+          />
+        ))}
+      </div>
+
+      <h3>선택 주 전체 예약</h3>
+      <div className="cards">
+        {weekItems.length === 0 ? (
+          <p className="empty">선택한 주의 예약 신청이 없습니다.</p>
+        ) : weekItems.map((item) => (
+          <RoomReservationReviewRow
+            key={item.id}
+            item={item}
+            approveRoomReservation={approveRoomReservation}
+            rejectRoomReservation={rejectRoomReservation}
+            deleteReservation={deleteReservation}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RoomReservationReviewRow({ item, approveRoomReservation, rejectRoomReservation, deleteReservation }) {
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const pending = item.approvalStatus === "pending";
+  return (
+    <article className="admin-row room-review-row">
+      <div>
+        <div className="post-head">
+          <RoomGroupBadge groupId={item.groupId} />
+          <span className={item.approvalStatus === "approved" ? "global-badge" : "secret-badge"}>{reservationStatusLabel(item.approvalStatus)}</span>
+        </div>
+        <strong>{formatDate(item.date)} {roomTimeRange(item)}</strong>
+        <p>{item.requesterName} 신청 · {item.purpose || "사용 목적 없음"}</p>
+        <small>신청 {formatDateTime(item.requestedAt || item.createdAt)}{item.reviewedAt ? ` · 처리 ${formatDateTime(item.reviewedAt)}` : ""}</small>
+        {item.rejectReason && <small className="danger">거부 사유: {item.rejectReason}</small>}
+      </div>
+      {pending ? (
+        <>
+          <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="거부 사유(선택)" />
+          <div className="button-row">
+            <button
+              className="primary"
+              type="button"
+              onClick={async () => {
+                setError("");
+                try {
+                  await approveRoomReservation(item);
+                } catch (err) {
+                  setError(err.message);
+                }
+              }}
+            >
+              승인
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                setError("");
+                try {
+                  await rejectRoomReservation(item, reason);
+                } catch (err) {
+                  setError(err.message);
+                }
+              }}
+            >
+              거부
+            </button>
+          </div>
+        </>
+      ) : (
+        <button type="button" onClick={() => deleteReservation(item)}><Trash2 size={15} /> 삭제</button>
+      )}
+      {error && <small className="danger">{error}</small>}
+    </article>
   );
 }
 
@@ -3133,6 +3535,156 @@ function Bar({ label, value, max, color, suffix }) {
   );
 }
 
+function roomGroup(groupId) {
+  return ROOM_GROUPS.find((group) => group.id === groupId) || ROOM_GROUPS[0];
+}
+
+function roomGroupName(groupId) {
+  return roomGroup(groupId).name;
+}
+
+function roomStartHours() {
+  return Array.from({ length: ROOM_END_HOUR - ROOM_START_HOUR }, (_, index) => ROOM_START_HOUR + index);
+}
+
+function roomDurationOptions(startHour) {
+  const max = Math.max(1, ROOM_END_HOUR - Number(startHour || ROOM_START_HOUR));
+  return Array.from({ length: max }, (_, index) => index + 1);
+}
+
+function normalizeRoomReservationForm(form) {
+  const startHour = Number(form.startHour);
+  const duration = Number(form.duration || (Number(form.endHour) - startHour) || 1);
+  return {
+    groupId: form.groupId,
+    date: form.date,
+    startHour,
+    duration,
+    endHour: startHour + duration,
+    purpose: String(form.purpose || "").trim(),
+  };
+}
+
+function validateRoomReservation(form, reservations, { statuses = ["pending", "approved"], excludeId = "" } = {}) {
+  const group = ROOM_GROUPS.find((item) => item.id === form.groupId);
+  if (!group) throw new Error("대표 단체를 선택해주세요.");
+  if (!isValidDateKey(form.date)) throw new Error("예약일을 선택해주세요.");
+  if (!Number.isInteger(form.startHour) || form.startHour < ROOM_START_HOUR || form.startHour >= ROOM_END_HOUR) {
+    throw new Error("예약 시작 시간은 08시부터 23시까지 선택할 수 있습니다.");
+  }
+  if (!Number.isInteger(form.duration) || form.duration < 1 || form.endHour > ROOM_END_HOUR) {
+    throw new Error("638 실습실은 08시부터 24시까지, 1시간 단위로 예약할 수 있습니다.");
+  }
+
+  const active = (reservations || []).filter((item) => {
+    if (excludeId && item.id === excludeId) return false;
+    return statuses.includes(item.approvalStatus || "pending");
+  });
+  const used = active
+    .filter((item) => item.groupId === form.groupId && reservationWeekStart(item) === weekStartKey(form.date))
+    .reduce((sum, item) => sum + reservationHours(item), 0);
+  const remaining = ROOM_WEEKLY_LIMIT - used;
+  if (form.duration > remaining) {
+    throw new Error(`${group.name}은 선택한 주에 ${Math.max(0, remaining)}시간만 남았습니다. 요청한 ${form.duration}시간은 예약할 수 없습니다.`);
+  }
+
+  const conflict = active.find((item) => (
+    item.date === form.date &&
+    rangesOverlap(form.startHour, form.endHour, Number(item.startHour), Number(item.endHour || Number(item.startHour) + reservationHours(item)))
+  ));
+  if (conflict) {
+    throw new Error(`${formatDate(form.date)} ${roomTimeRange(conflict)}에는 이미 ${roomGroupName(conflict.groupId)} 예약이 있습니다.`);
+  }
+}
+
+function roomGroupHours(reservations, groupId, weekStart, statuses = ["pending", "approved"]) {
+  return (reservations || [])
+    .filter((item) => statuses.includes(item.approvalStatus || "pending"))
+    .filter((item) => item.groupId === groupId && reservationWeekStart(item) === weekStart)
+    .reduce((sum, item) => sum + reservationHours(item), 0);
+}
+
+function roomRemainingHours(reservations, groupId, weekStart, statuses = ["pending", "approved"]) {
+  return ROOM_WEEKLY_LIMIT - roomGroupHours(reservations, groupId, weekStart, statuses);
+}
+
+function reservationHours(item) {
+  const start = Number(item.startHour);
+  const end = Number(item.endHour);
+  const duration = Number(item.duration);
+  if (Number.isFinite(duration) && duration > 0) return duration;
+  if (Number.isFinite(start) && Number.isFinite(end) && end > start) return end - start;
+  return 1;
+}
+
+function reservationWeekStart(item) {
+  return item.weekStart || weekStartKey(item.date);
+}
+
+function roomTimeRange(item) {
+  const start = Number(item.startHour);
+  const end = Number(item.endHour || start + reservationHours(item));
+  return `${hourLabel(start)}-${hourLabel(end)}`;
+}
+
+function hourLabel(hour) {
+  return `${String(hour).padStart(2, "0")}:00`;
+}
+
+function sortRoomReservation(a, b) {
+  const dateCompare = String(a.date || "").localeCompare(String(b.date || ""));
+  if (dateCompare !== 0) return dateCompare;
+  const startCompare = Number(a.startHour || 0) - Number(b.startHour || 0);
+  if (startCompare !== 0) return startCompare;
+  return recordTime(b) - recordTime(a);
+}
+
+function rangesOverlap(startA, endA, startB, endB) {
+  return startA < endB && startB < endA;
+}
+
+function weekStartKey(date) {
+  const parsed = parseDateKey(date || todayKey());
+  if (!parsed) return weekStartKey(todayKey());
+  const day = parsed.getDay();
+  const daysFromMonday = (day + 6) % 7;
+  parsed.setDate(parsed.getDate() - daysFromMonday);
+  return dateKey(parsed);
+}
+
+function weekDays(weekStart) {
+  return Array.from({ length: 7 }, (_, index) => addDaysKey(weekStart, index));
+}
+
+function addDaysKey(date, days) {
+  const parsed = parseDateKey(date || todayKey()) || new Date();
+  parsed.setDate(parsed.getDate() + days);
+  return dateKey(parsed);
+}
+
+function parseDateKey(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return null;
+  const [year, month, day] = String(value).split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function isValidDateKey(value) {
+  return Boolean(parseDateKey(value));
+}
+
+function weekdayLabelFromDate(value) {
+  const parsed = parseDateKey(value);
+  if (!parsed) return "";
+  return WEEKDAY_LABELS[(parsed.getDay() + 6) % 7];
+}
+
+function reservationStatusLabel(status) {
+  if (status === "approved") return "승인";
+  if (status === "rejected") return "거부";
+  if (status === "cancelled") return "취소";
+  return "승인대기";
+}
+
 function downloadAppDataExcel(data, stats) {
   const members = data.members || [];
   const generatedAt = formatDateTime(now());
@@ -3153,6 +3705,7 @@ function downloadAppDataExcel(data, stats) {
         { label: "자료 수", value: (data.resources || []).length },
         { label: "쪽지 수", value: (data.messages || []).length },
         { label: "비밀번호 요청 수", value: (data.pwRequests || []).length },
+        { label: "638 실습실 예약 수", value: (data.roomReservations || []).length },
       ],
     },
     {
@@ -3308,6 +3861,24 @@ function downloadAppDataExcel(data, stats) {
         col("처리일", "reviewedAt", formatDateTime),
       ],
       rows: data.signupRequests || [],
+    },
+    {
+      name: "638예약",
+      columns: [
+        col("단체", "groupId", roomGroupName),
+        col("예약자", "requesterName"),
+        col("날짜", "date", formatDate),
+        col("요일", "date", weekdayLabelFromDate),
+        col("시간", "", roomTimeRange),
+        col("이용시간", "", (item) => `${reservationHours(item)}시간`),
+        col("목적", "purpose"),
+        col("상태", "approvalStatus", reservationStatusLabel),
+        col("거부 사유", "rejectReason"),
+        col("신청일", "requestedAt", formatDateTime),
+        col("처리자", "reviewedBy"),
+        col("처리일", "reviewedAt", formatDateTime),
+      ],
+      rows: data.roomReservations || [],
     },
     {
       name: "탈퇴이력",
@@ -3504,7 +4075,7 @@ function getReactionDefinition(type) {
 }
 
 async function fetchRemoteData({ includeFiles = true } = {}) {
-  const [members, posts, promos, schedules, events, attendance, outputs, resources, messages, messageReads, pwRequests, signupRequests, withdrawals] = await Promise.all([
+  const [members, posts, promos, schedules, events, attendance, outputs, resources, messages, messageReads, pwRequests, signupRequests, roomReservations, withdrawals] = await Promise.all([
     fbGet("members"),
     fbGet("posts"),
     fbGet("promos"),
@@ -3517,6 +4088,7 @@ async function fetchRemoteData({ includeFiles = true } = {}) {
     fbGet("messageReads"),
     fbGet("pwRequests"),
     fbGet("signupRequests"),
+    fbGet("roomReservations"),
     fbGet("withdrawals"),
   ]);
 
@@ -3533,6 +4105,7 @@ async function fetchRemoteData({ includeFiles = true } = {}) {
     messageReads: toArray(messageReads, "key"),
     pwRequests: toArray(pwRequests).sort(sortNewest),
     signupRequests: toArray(signupRequests).sort(sortNewest),
+    roomReservations: toArray(roomReservations).sort(sortRoomReservation),
     withdrawals: toArray(withdrawals).sort(sortNewest),
   };
 }
@@ -3640,6 +4213,7 @@ function readLocalData() {
     messageReads: readStorage(STORAGE.messageReads, []),
     pwRequests: readStorage(STORAGE.pwRequests, []),
     signupRequests: readStorage(STORAGE.signupRequests, []),
+    roomReservations: readStorage(STORAGE.roomReservations, []),
     withdrawals: readStorage(STORAGE.withdrawals, []),
   };
 }
@@ -3657,6 +4231,7 @@ function saveLocalData(data) {
   writeStorage(STORAGE.messageReads, data.messageReads);
   writeStorage(STORAGE.pwRequests, data.pwRequests);
   writeStorage(STORAGE.signupRequests, data.signupRequests);
+  writeStorage(STORAGE.roomReservations, data.roomReservations);
   writeStorage(STORAGE.withdrawals, data.withdrawals);
 }
 
