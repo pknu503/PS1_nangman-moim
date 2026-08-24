@@ -633,6 +633,34 @@ label,
   background: #fff1f1;
 }
 
+.reservation-alert {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.reservation-alert div {
+  display: grid;
+  gap: 4px;
+}
+
+.reservation-alert span {
+  white-space: pre-wrap;
+}
+
+.reservation-alert button {
+  flex-shrink: 0;
+  padding: 7px 11px;
+  border: 1.5px solid currentColor;
+  border-radius: 8px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.58);
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .post,
 .admin-row,
 .attendance-row,
@@ -1403,6 +1431,23 @@ label.inline {
 .confirm-dialog h2,
 .confirm-dialog p {
   margin-bottom: 0;
+}
+
+.dialog-message {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1.5px solid rgba(217, 77, 77, 0.25);
+  border-radius: 10px;
+  color: var(--danger);
+  background: #fff1f1;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.reservation-conflict-dialog .primary {
+  width: 100%;
+  justify-content: center;
 }
 
 .resource-grid {

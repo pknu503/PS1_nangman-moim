@@ -436,7 +436,7 @@ export default function App() {
 
   async function addRoomReservation(form) {
     clearAlerts();
-    if (!sessionUser?.id) return;
+    if (!sessionUser?.id) return { ok: false, error: "로그인이 필요합니다." };
     setLoading(true);
     try {
       const latest = await fetchRemoteData({ includeFiles: false }).catch(() => dataRef.current || data);
@@ -463,11 +463,16 @@ export default function App() {
       }));
       await fbPatch("roomReservations", { [firebaseKey(item.id)]: cleanFirebase(item) });
       setMessage("638호 실습실 예약 신청이 전송되었습니다. 관리자 또는 부관리자 승인 후 현황에 표시됩니다.");
-      return true;
+      return { ok: true };
     } catch (err) {
       console.error(err);
-      setError(err.message || "638호 실습실 예약 신청을 저장하지 못했습니다.");
-      return false;
+      const detail = err.message || "638호 실습실 예약 신청을 저장하지 못했습니다.";
+      setError(detail);
+      return {
+        ok: false,
+        error: detail,
+        conflict: isRoomReservationConflictMessage(detail),
+      };
     } finally {
       setLoading(false);
     }
@@ -1447,6 +1452,8 @@ function HomePage({ data, isAdmin, user, myClubIds, openClub, addPromo, deletePr
 
 function RoomReservationPanel({ reservations, user, addRoomReservation }) {
   const [monthKey, setMonthKey] = useState(currentMonthKey());
+  const [reservationNotice, setReservationNotice] = useState(null);
+  const [conflictDialog, setConflictDialog] = useState(null);
   const [form, setForm] = useState({
     groupId: "hora",
     date: todayKey(),
@@ -1510,8 +1517,25 @@ function RoomReservationPanel({ reservations, user, addRoomReservation }) {
         className="room-form"
         onSubmit={async (event) => {
           event.preventDefault();
-          const saved = await addRoomReservation(form);
-          if (saved) setForm((current) => ({ ...current, purpose: "" }));
+          setReservationNotice(null);
+          setConflictDialog(null);
+          const result = await addRoomReservation(form);
+          if (result?.ok) {
+            setForm((current) => ({ ...current, purpose: "" }));
+            setReservationNotice({
+              type: "success",
+              title: "예약 신청 완료",
+              message: "예약 신청이 전송되었습니다. 관리자 또는 부관리자 승인 후 현황에 표시됩니다.",
+            });
+            return;
+          }
+          const notice = {
+            type: "error",
+            title: result?.conflict ? "예약 불가: 중복된 시간입니다" : "예약 신청 불가",
+            message: result?.error || "예약 신청을 처리하지 못했습니다.",
+          };
+          setReservationNotice(notice);
+          if (result?.conflict) setConflictDialog(notice);
         }}
       >
         <label>
@@ -1546,6 +1570,10 @@ function RoomReservationPanel({ reservations, user, addRoomReservation }) {
         <button className="primary" type="submit"><Plus size={17} /> 예약 신청</button>
       </form>
 
+      {reservationNotice && (
+        <ReservationNotice notice={reservationNotice} onClose={() => setReservationNotice(null)} />
+      )}
+
       {selectedRemaining < duration && (
         <div className="alert error">
           {selectedGroup.name}은 선택한 달에 {Math.max(0, selectedRemaining)}시간만 남았습니다.
@@ -1572,7 +1600,37 @@ function RoomReservationPanel({ reservations, user, addRoomReservation }) {
           </div>
         </div>
       )}
+
+      {conflictDialog && (
+        <RoomReservationConflictDialog notice={conflictDialog} onClose={() => setConflictDialog(null)} />
+      )}
     </section>
+  );
+}
+
+function ReservationNotice({ notice, onClose }) {
+  return (
+    <div className={notice.type === "error" ? "alert error reservation-alert" : "alert reservation-alert"}>
+      <div>
+        <strong>{notice.title}</strong>
+        {splitLines(notice.message).map((line, index) => <span key={`${line}-${index}`}>{line}</span>)}
+      </div>
+      <button type="button" onClick={onClose}>닫기</button>
+    </div>
+  );
+}
+
+function RoomReservationConflictDialog({ notice, onClose }) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="confirm-dialog reservation-conflict-dialog" role="dialog" aria-modal="true" aria-labelledby="room-conflict-title">
+        <h2 id="room-conflict-title">{notice.title}</h2>
+        <div className="dialog-message">
+          {splitLines(notice.message).map((line, index) => <p key={`${line}-${index}`}>{line}</p>)}
+        </div>
+        <button className="primary" type="button" onClick={onClose}>확인</button>
+      </section>
+    </div>
   );
 }
 
@@ -3679,6 +3737,10 @@ function validateRoomReservation(form, reservations, { statuses = ["pending", "a
   }
 }
 
+function isRoomReservationConflictMessage(message) {
+  return String(message || "").includes("중복 예약") || String(message || "").includes("해당 시간에는 예약할 수 없습니다");
+}
+
 function roomGroupHours(reservations, groupId, monthKey, statuses = ["pending", "approved"]) {
   return (reservations || [])
     .filter((item) => statuses.includes(item.approvalStatus || "pending"))
@@ -4592,6 +4654,10 @@ function sortNewest(a, b) {
 
 function makeId(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function splitLines(value) {
+  return String(value || "").split(/\n+/).filter(Boolean);
 }
 
 function now() {
