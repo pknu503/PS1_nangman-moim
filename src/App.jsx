@@ -106,7 +106,7 @@ const AUTO_REFRESH_MS = 60000;
 const MAX_DB_FILE_BYTES = 350 * 1024;
 const ROOM_START_HOUR = 8;
 const ROOM_END_HOUR = 24;
-const ROOM_WEEKLY_LIMIT = 30;
+const ROOM_MONTHLY_LIMIT = 120;
 const WEEKDAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"];
 const EMPTY_DATA = {
   members: [],
@@ -449,7 +449,7 @@ export default function App() {
         id: makeId("room638"),
         ...normalized,
         groupName: group.name,
-        weekStart: weekStartKey(normalized.date),
+        monthKey: roomMonthKey(normalized.date),
         requesterId: isAdmin ? "admin" : sessionUser.id,
         requesterName: isAdmin ? "관리자" : sessionUser.name,
         requesterStudentYear: isAdmin ? "" : sessionUser.studentYear,
@@ -462,11 +462,11 @@ export default function App() {
         roomReservations: [item, ...(current.roomReservations || [])],
       }));
       await fbPatch("roomReservations", { [firebaseKey(item.id)]: cleanFirebase(item) });
-      setMessage("638 실습실 예약 신청이 전송되었습니다. 관리자 또는 부관리자 승인 후 현황에 표시됩니다.");
+      setMessage("638호 실습실 예약 신청이 전송되었습니다. 관리자 또는 부관리자 승인 후 현황에 표시됩니다.");
       return true;
     } catch (err) {
       console.error(err);
-      setError(err.message || "638 실습실 예약 신청을 저장하지 못했습니다.");
+      setError(err.message || "638호 실습실 예약 신청을 저장하지 못했습니다.");
       return false;
     } finally {
       setLoading(false);
@@ -474,7 +474,7 @@ export default function App() {
   }
 
   async function approveRoomReservation(req) {
-    if (!canAdmin) throw new Error("638 예약 승인은 관리자 또는 부관리자만 할 수 있습니다.");
+    if (!canAdmin) throw new Error("638호 예약 승인은 관리자 또는 부관리자만 할 수 있습니다.");
     const latest = await fetchRemoteData({ includeFiles: false }).catch(() => dataRef.current || data);
     const normalized = normalizeRoomReservationForm(req);
     validateRoomReservation(normalized, latest.roomReservations || [], {
@@ -485,23 +485,28 @@ export default function App() {
       ...req,
       ...normalized,
       groupName: roomGroup(normalized.groupId).name,
-      weekStart: weekStartKey(normalized.date),
+      monthKey: roomMonthKey(normalized.date),
       approvalStatus: "approved",
       reviewedAt: now(),
       reviewedBy: isAdmin ? "관리자" : sessionUser.name,
       reviewerId: isAdmin ? "admin" : sessionUser.id,
       updatedAt: now(),
     };
+    const notice = buildRoomReservationNoticeMessage(updated, "approved");
     setData((current) => ({
       ...current,
       roomReservations: upsertById(current.roomReservations || [], updated),
+      messages: notice ? [notice, ...(current.messages || [])] : current.messages,
     }));
-    await fbPatch("roomReservations", { [firebaseRecordKey(req, req.id)]: cleanFirebase(updated) });
-    setMessage(`${roomGroup(updated.groupId).name}의 638 실습실 예약을 승인했습니다.`);
+    await Promise.all([
+      fbPatch("roomReservations", { [firebaseRecordKey(req, req.id)]: cleanFirebase(updated) }),
+      notice ? fbPatch("messages", { [firebaseKey(notice.id)]: cleanFirebase(notice) }) : Promise.resolve(),
+    ]);
+    setMessage(`${roomGroup(updated.groupId).name}의 638호 실습실 예약을 승인했습니다.`);
   }
 
   async function rejectRoomReservation(req, reason) {
-    if (!canAdmin) throw new Error("638 예약 처리는 관리자 또는 부관리자만 할 수 있습니다.");
+    if (!canAdmin) throw new Error("638호 예약 처리는 관리자 또는 부관리자만 할 수 있습니다.");
     const updated = {
       ...req,
       approvalStatus: "rejected",
@@ -511,12 +516,41 @@ export default function App() {
       reviewerId: isAdmin ? "admin" : sessionUser.id,
       updatedAt: now(),
     };
+    const notice = buildRoomReservationNoticeMessage(updated, "rejected", updated.rejectReason);
     setData((current) => ({
       ...current,
       roomReservations: upsertById(current.roomReservations || [], updated),
+      messages: notice ? [notice, ...(current.messages || [])] : current.messages,
     }));
-    await fbPatch("roomReservations", { [firebaseRecordKey(req, req.id)]: cleanFirebase(updated) });
-    setMessage("638 실습실 예약 신청을 거부했습니다.");
+    await Promise.all([
+      fbPatch("roomReservations", { [firebaseRecordKey(req, req.id)]: cleanFirebase(updated) }),
+      notice ? fbPatch("messages", { [firebaseKey(notice.id)]: cleanFirebase(notice) }) : Promise.resolve(),
+    ]);
+    setMessage("638호 실습실 예약 신청을 거부했습니다.");
+  }
+
+  async function cancelRoomReservation(req, reason) {
+    if (!canAdmin) throw new Error("638호 예약 취소는 관리자 또는 부관리자만 할 수 있습니다.");
+    const updated = {
+      ...req,
+      approvalStatus: "cancelled",
+      cancelReason: reason.trim() || "관리자/부관리자 취소",
+      cancelledAt: now(),
+      cancelledBy: isAdmin ? "관리자" : sessionUser.name,
+      cancelledById: isAdmin ? "admin" : sessionUser.id,
+      updatedAt: now(),
+    };
+    const notice = buildRoomReservationNoticeMessage(updated, "cancelled", updated.cancelReason);
+    setData((current) => ({
+      ...current,
+      roomReservations: upsertById(current.roomReservations || [], updated),
+      messages: notice ? [notice, ...(current.messages || [])] : current.messages,
+    }));
+    await Promise.all([
+      fbPatch("roomReservations", { [firebaseRecordKey(req, req.id)]: cleanFirebase(updated) }),
+      notice ? fbPatch("messages", { [firebaseKey(notice.id)]: cleanFirebase(notice) }) : Promise.resolve(),
+    ]);
+    setMessage("638호 실습실 예약을 취소했습니다.");
   }
 
   async function updateRecord(collection, record, changes) {
@@ -1188,6 +1222,7 @@ export default function App() {
           sendPwRequestToSubAdmin={sendPwRequestToSubAdmin}
           approveRoomReservation={approveRoomReservation}
           rejectRoomReservation={rejectRoomReservation}
+          cancelRoomReservation={cancelRoomReservation}
           canManageSubAdmins={isAdmin}
           canApproveSignup={isAdmin}
           canForceWithdraw={isAdmin}
@@ -1411,7 +1446,7 @@ function HomePage({ data, isAdmin, user, myClubIds, openClub, addPromo, deletePr
 }
 
 function RoomReservationPanel({ reservations, user, addRoomReservation }) {
-  const [weekStart, setWeekStart] = useState(weekStartKey(todayKey()));
+  const [monthKey, setMonthKey] = useState(currentMonthKey());
   const [form, setForm] = useState({
     groupId: "hora",
     date: todayKey(),
@@ -1419,22 +1454,22 @@ function RoomReservationPanel({ reservations, user, addRoomReservation }) {
     duration: "1",
     purpose: "",
   });
-  const formWeekStart = weekStartKey(form.date);
+  const formMonthKey = roomMonthKey(form.date);
   const duration = Number(form.duration || 1);
-  const selectedRemaining = roomRemainingHours(reservations, form.groupId, formWeekStart, ["pending", "approved"]);
+  const selectedRemaining = roomRemainingHours(reservations, form.groupId, formMonthKey, ["pending", "approved"]);
   const selectedGroup = roomGroup(form.groupId);
   const myReservations = (reservations || [])
     .filter((item) => item.requesterId === user?.id || (user?.id === "admin" && item.requesterId === "admin"))
-    .filter((item) => reservationWeekStart(item) === weekStart)
+    .filter((item) => reservationMonthKey(item) === monthKey)
     .sort(sortRoomReservation);
 
-  function moveWeek(delta) {
-    setWeekStart(addDaysKey(weekStart, delta * 7));
+  function moveMonth(delta) {
+    setMonthKey(addMonths(monthKey, delta));
   }
 
   function changeDate(date) {
     setForm((current) => ({ ...current, date }));
-    if (date) setWeekStart(weekStartKey(date));
+    if (date) setMonthKey(roomMonthKey(date));
   }
 
   function changeStartHour(startHour) {
@@ -1450,17 +1485,17 @@ function RoomReservationPanel({ reservations, user, addRoomReservation }) {
     <section className="panel room-panel">
       <div className="room-head">
         <div>
-          <h2><CalendarDays size={19} /> 638 사회복지실습실 예약</h2>
-          <p>매일 08:00-24:00, 1시간 단위 예약. 단체별 주 최대 {ROOM_WEEKLY_LIMIT}시간까지 신청할 수 있습니다.</p>
+          <h2><CalendarDays size={19} /> 638호 사회복지실습실 예약</h2>
+          <p>매일 08:00-24:00, 1시간 단위 예약. 단체별 월 최대 {ROOM_MONTHLY_LIMIT}시간까지 신청할 수 있습니다.</p>
         </div>
         <div className="week-controls">
-          <button type="button" onClick={() => moveWeek(-1)} aria-label="이전 주"><ChevronLeft size={17} /></button>
-          <strong>{formatDate(weekStart)} 주</strong>
-          <button type="button" onClick={() => moveWeek(1)} aria-label="다음 주"><ChevronRight size={17} /></button>
+          <button type="button" onClick={() => moveMonth(-1)} aria-label="이전 달"><ChevronLeft size={17} /></button>
+          <strong>{monthKey.replace("-", ".")}</strong>
+          <button type="button" onClick={() => moveMonth(1)} aria-label="다음 달"><ChevronRight size={17} /></button>
         </div>
       </div>
 
-      <RoomQuotaSummary reservations={reservations} weekStart={weekStart} />
+      <RoomQuotaSummary reservations={reservations} monthKey={monthKey} />
 
       <form
         className="room-form"
@@ -1498,11 +1533,11 @@ function RoomReservationPanel({ reservations, user, addRoomReservation }) {
 
       {selectedRemaining < duration && (
         <div className="alert error">
-          {selectedGroup.name}은 선택한 주에 {Math.max(0, selectedRemaining)}시간만 남았습니다.
+          {selectedGroup.name}은 선택한 달에 {Math.max(0, selectedRemaining)}시간만 남았습니다.
         </div>
       )}
 
-      <RoomWeekSchedule reservations={reservations} weekStart={weekStart} />
+      <RoomMonthSchedule reservations={reservations} monthKey={monthKey} />
 
       {myReservations.length > 0 && (
         <div className="room-my-list">
@@ -1526,19 +1561,19 @@ function RoomReservationPanel({ reservations, user, addRoomReservation }) {
   );
 }
 
-function RoomQuotaSummary({ reservations, weekStart }) {
+function RoomQuotaSummary({ reservations, monthKey }) {
   return (
     <div className="room-quota-grid">
       {ROOM_GROUPS.map((group) => {
-        const approved = roomGroupHours(reservations, group.id, weekStart, ["approved"]);
-        const active = roomGroupHours(reservations, group.id, weekStart, ["pending", "approved"]);
-        const remaining = Math.max(0, ROOM_WEEKLY_LIMIT - active);
+        const approved = roomGroupHours(reservations, group.id, monthKey, ["approved"]);
+        const active = roomGroupHours(reservations, group.id, monthKey, ["pending", "approved"]);
+        const remaining = Math.max(0, ROOM_MONTHLY_LIMIT - active);
         return (
           <article className="room-quota-card" key={group.id} style={{ "--group": group.color, "--group-bg": group.bg }}>
             <RoomGroupBadge groupId={group.id} />
             <strong>{remaining}시간 남음</strong>
-            <div className="bar"><span style={{ width: `${Math.min(100, Math.round((active / ROOM_WEEKLY_LIMIT) * 100))}%`, background: group.color }} /></div>
-            <small>승인 {approved}시간 · 승인대기 포함 {active}시간 / {ROOM_WEEKLY_LIMIT}시간</small>
+            <div className="bar"><span style={{ width: `${Math.min(100, Math.round((active / ROOM_MONTHLY_LIMIT) * 100))}%`, background: group.color }} /></div>
+            <small>승인 {approved}시간 · 승인대기 포함 {active}시간 / {ROOM_MONTHLY_LIMIT}시간</small>
           </article>
         );
       })}
@@ -1546,22 +1581,22 @@ function RoomQuotaSummary({ reservations, weekStart }) {
   );
 }
 
-function RoomWeekSchedule({ reservations, weekStart }) {
-  const days = weekDays(weekStart);
+function RoomMonthSchedule({ reservations, monthKey }) {
+  const days = monthDays(monthKey);
   const approved = (reservations || [])
     .filter((item) => item.approvalStatus === "approved")
-    .filter((item) => reservationWeekStart(item) === weekStart)
+    .filter((item) => reservationMonthKey(item) === monthKey)
     .sort(sortRoomReservation);
 
   return (
     <div className="room-schedule">
-      <h3>승인된 예약 현황</h3>
-      <div className="room-week-grid">
-        {days.map((date, index) => {
+      <h3>승인된 예약 현황 ({monthKey.replace("-", ".")} 전체)</h3>
+      <div className="room-month-grid">
+        {days.map((date) => {
           const dayItems = approved.filter((item) => item.date === date);
           return (
             <article className="room-day" key={date}>
-              <strong>{WEEKDAY_LABELS[index]} · {date.slice(5).replace("-", ".")}</strong>
+              <strong>{weekdayLabelFromDate(date)} · {date.slice(5).replace("-", ".")}</strong>
               {dayItems.length === 0 ? (
                 <span>예약 없음</span>
               ) : dayItems.map((item) => (
@@ -2624,7 +2659,7 @@ function PwRequestPanel({ requests, submitPwRequest }) {
   );
 }
 
-function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, approveSignupRequest, rejectSignupRequest, restoreSignupRequest, updateRecord, forceWithdraw, toggleSubAdmin, sendPwRequestToSubAdmin, approveRoomReservation, rejectRoomReservation, canManageSubAdmins, canApproveSignup, canForceWithdraw, canDelegatePwRequest, canDownloadExcel, downloadExcelData, excelLoading, refresh }) {
+function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyPwRequest, approveSignupRequest, rejectSignupRequest, restoreSignupRequest, updateRecord, forceWithdraw, toggleSubAdmin, sendPwRequestToSubAdmin, approveRoomReservation, rejectRoomReservation, cancelRoomReservation, canManageSubAdmins, canApproveSignup, canForceWithdraw, canDelegatePwRequest, canDownloadExcel, downloadExcelData, excelLoading, refresh }) {
   const pendingPwCount = data.pwRequests.filter((req) => req.status === "pending").length;
   const pendingSignupCount = data.signupRequests.filter((req) => req.approvalStatus === "pending").length;
   const pendingRoomCount = (data.roomReservations || []).filter((req) => req.approvalStatus === "pending").length;
@@ -2645,7 +2680,7 @@ function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyP
       <div className="tabs">
         <button className={activeTab === "members" ? "active" : ""} type="button" onClick={() => setTab("members")}>회원</button>
         {canApproveSignup && <button className={activeTab === "signup" ? "active" : ""} type="button" onClick={() => setTab("signup")}>가입신청 {pendingSignupCount || ""}</button>}
-        <button className={activeTab === "room638" ? "active" : ""} type="button" onClick={() => setTab("room638")}>638예약 {pendingRoomCount || ""}</button>
+        <button className={activeTab === "room638" ? "active" : ""} type="button" onClick={() => setTab("room638")}>638호예약 {pendingRoomCount || ""}</button>
         <button className={activeTab === "pw" ? "active" : ""} type="button" onClick={() => setTab("pw")}>비번요청 {pendingPwCount || ""}</button>
         <button className={activeTab === "resources" ? "active" : ""} type="button" onClick={() => setTab("resources")}>자료</button>
         <button className={activeTab === "posts" ? "active" : ""} type="button" onClick={() => setTab("posts")}>게시판</button>
@@ -2654,7 +2689,7 @@ function AdminPage({ data, stats, tab, setTab, deleteRecord, addResource, replyP
       </div>
       {activeTab === "members" && <AdminMembers members={data.members} forceWithdraw={forceWithdraw} toggleSubAdmin={toggleSubAdmin} canManageSubAdmins={canManageSubAdmins} canForceWithdraw={canForceWithdraw} />}
       {activeTab === "signup" && canApproveSignup && <AdminSignupRequests requests={data.signupRequests} approveSignupRequest={approveSignupRequest} rejectSignupRequest={rejectSignupRequest} restoreSignupRequest={restoreSignupRequest} />}
-      {activeTab === "room638" && <AdminRoomReservations reservations={data.roomReservations || []} approveRoomReservation={approveRoomReservation} rejectRoomReservation={rejectRoomReservation} deleteReservation={(item) => deleteRecord("roomReservations", item)} />}
+      {activeTab === "room638" && <AdminRoomReservations reservations={data.roomReservations || []} approveRoomReservation={approveRoomReservation} rejectRoomReservation={rejectRoomReservation} cancelRoomReservation={cancelRoomReservation} deleteReservation={(item) => deleteRecord("roomReservations", item)} />}
       {activeTab === "pw" && (
         <AdminPwRequests
           requests={data.pwRequests}
@@ -2734,32 +2769,32 @@ function AdminSignupRequests({ requests, approveSignupRequest, rejectSignupReque
   );
 }
 
-function AdminRoomReservations({ reservations, approveRoomReservation, rejectRoomReservation, deleteReservation }) {
-  const [weekStart, setWeekStart] = useState(weekStartKey(todayKey()));
+function AdminRoomReservations({ reservations, approveRoomReservation, rejectRoomReservation, cancelRoomReservation, deleteReservation }) {
+  const [monthKey, setMonthKey] = useState(currentMonthKey());
   const sorted = [...(reservations || [])].sort((a, b) => {
     if (a.approvalStatus === "pending" && b.approvalStatus !== "pending") return -1;
     if (a.approvalStatus !== "pending" && b.approvalStatus === "pending") return 1;
     return sortRoomReservation(a, b);
   });
-  const weekItems = sorted.filter((item) => reservationWeekStart(item) === weekStart);
+  const monthItems = sorted.filter((item) => reservationMonthKey(item) === monthKey);
   const pending = sorted.filter((item) => item.approvalStatus === "pending");
 
   return (
     <section className="panel">
       <div className="room-head">
         <div>
-          <h2><CalendarDays size={19} /> 638 실습실 예약 승인</h2>
-          <p>승인 시 같은 시간대 중복과 단체별 주 {ROOM_WEEKLY_LIMIT}시간 제한을 다시 검사합니다.</p>
+          <h2><CalendarDays size={19} /> 638호 실습실 예약 승인</h2>
+          <p>승인 시 같은 시간대 중복과 단체별 월 {ROOM_MONTHLY_LIMIT}시간 제한을 다시 검사합니다.</p>
         </div>
         <div className="week-controls">
-          <button type="button" onClick={() => setWeekStart(addDaysKey(weekStart, -7))} aria-label="이전 주"><ChevronLeft size={17} /></button>
-          <strong>{formatDate(weekStart)} 주</strong>
-          <button type="button" onClick={() => setWeekStart(addDaysKey(weekStart, 7))} aria-label="다음 주"><ChevronRight size={17} /></button>
+          <button type="button" onClick={() => setMonthKey(addMonths(monthKey, -1))} aria-label="이전 달"><ChevronLeft size={17} /></button>
+          <strong>{monthKey.replace("-", ".")}</strong>
+          <button type="button" onClick={() => setMonthKey(addMonths(monthKey, 1))} aria-label="다음 달"><ChevronRight size={17} /></button>
         </div>
       </div>
 
-      <RoomQuotaSummary reservations={reservations} weekStart={weekStart} />
-      <RoomWeekSchedule reservations={reservations} weekStart={weekStart} />
+      <RoomQuotaSummary reservations={reservations} monthKey={monthKey} />
+      <RoomMonthSchedule reservations={reservations} monthKey={monthKey} />
 
       <h3>승인 대기 {pending.length}건</h3>
       <div className="cards">
@@ -2771,21 +2806,23 @@ function AdminRoomReservations({ reservations, approveRoomReservation, rejectRoo
             item={item}
             approveRoomReservation={approveRoomReservation}
             rejectRoomReservation={rejectRoomReservation}
+            cancelRoomReservation={cancelRoomReservation}
             deleteReservation={deleteReservation}
           />
         ))}
       </div>
 
-      <h3>선택 주 전체 예약</h3>
+      <h3>선택 월 전체 예약</h3>
       <div className="cards">
-        {weekItems.length === 0 ? (
-          <p className="empty">선택한 주의 예약 신청이 없습니다.</p>
-        ) : weekItems.map((item) => (
+        {monthItems.length === 0 ? (
+          <p className="empty">선택한 월의 예약 신청이 없습니다.</p>
+        ) : monthItems.map((item) => (
           <RoomReservationReviewRow
             key={item.id}
             item={item}
             approveRoomReservation={approveRoomReservation}
             rejectRoomReservation={rejectRoomReservation}
+            cancelRoomReservation={cancelRoomReservation}
             deleteReservation={deleteReservation}
           />
         ))}
@@ -2794,10 +2831,11 @@ function AdminRoomReservations({ reservations, approveRoomReservation, rejectRoo
   );
 }
 
-function RoomReservationReviewRow({ item, approveRoomReservation, rejectRoomReservation, deleteReservation }) {
+function RoomReservationReviewRow({ item, approveRoomReservation, rejectRoomReservation, cancelRoomReservation, deleteReservation }) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const pending = item.approvalStatus === "pending";
+  const approved = item.approvalStatus === "approved";
   return (
     <article className="admin-row room-review-row">
       <div>
@@ -2809,6 +2847,7 @@ function RoomReservationReviewRow({ item, approveRoomReservation, rejectRoomRese
         <p>{item.requesterName} 신청 · {item.purpose || "사용 목적 없음"}</p>
         <small>신청 {formatDateTime(item.requestedAt || item.createdAt)}{item.reviewedAt ? ` · 처리 ${formatDateTime(item.reviewedAt)}` : ""}</small>
         {item.rejectReason && <small className="danger">거부 사유: {item.rejectReason}</small>}
+        {item.cancelReason && <small className="danger">취소 사유: {item.cancelReason}</small>}
       </div>
       {pending ? (
         <>
@@ -2840,6 +2879,25 @@ function RoomReservationReviewRow({ item, approveRoomReservation, rejectRoomRese
               }}
             >
               거부
+            </button>
+          </div>
+        </>
+      ) : approved ? (
+        <>
+          <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="취소 사유(선택)" />
+          <div className="button-row">
+            <button
+              type="button"
+              onClick={async () => {
+                setError("");
+                try {
+                  await cancelRoomReservation(item, reason);
+                } catch (err) {
+                  setError(err.message);
+                }
+              }}
+            >
+              예약 취소
             </button>
           </div>
         </>
@@ -3573,7 +3631,7 @@ function validateRoomReservation(form, reservations, { statuses = ["pending", "a
     throw new Error("예약 시작 시간은 08시부터 23시까지 선택할 수 있습니다.");
   }
   if (!Number.isInteger(form.duration) || form.duration < 1 || form.endHour > ROOM_END_HOUR) {
-    throw new Error("638 실습실은 08시부터 24시까지, 1시간 단위로 예약할 수 있습니다.");
+    throw new Error("638호 실습실은 08시부터 24시까지, 1시간 단위로 예약할 수 있습니다.");
   }
 
   const active = (reservations || []).filter((item) => {
@@ -3581,11 +3639,11 @@ function validateRoomReservation(form, reservations, { statuses = ["pending", "a
     return statuses.includes(item.approvalStatus || "pending");
   });
   const used = active
-    .filter((item) => item.groupId === form.groupId && reservationWeekStart(item) === weekStartKey(form.date))
+    .filter((item) => item.groupId === form.groupId && reservationMonthKey(item) === roomMonthKey(form.date))
     .reduce((sum, item) => sum + reservationHours(item), 0);
-  const remaining = ROOM_WEEKLY_LIMIT - used;
+  const remaining = ROOM_MONTHLY_LIMIT - used;
   if (form.duration > remaining) {
-    throw new Error(`${group.name}은 선택한 주에 ${Math.max(0, remaining)}시간만 남았습니다. 요청한 ${form.duration}시간은 예약할 수 없습니다.`);
+    throw new Error(`${group.name}은 선택한 달에 ${Math.max(0, remaining)}시간만 남았습니다. 요청한 ${form.duration}시간은 예약할 수 없습니다.`);
   }
 
   const conflict = active.find((item) => (
@@ -3593,19 +3651,25 @@ function validateRoomReservation(form, reservations, { statuses = ["pending", "a
     rangesOverlap(form.startHour, form.endHour, Number(item.startHour), Number(item.endHour || Number(item.startHour) + reservationHours(item)))
   ));
   if (conflict) {
-    throw new Error(`${formatDate(form.date)} ${roomTimeRange(conflict)}에는 이미 ${roomGroupName(conflict.groupId)} 예약이 있습니다.`);
+    throw new Error(
+      [
+        "해당 시간에는 예약할 수 없습니다.",
+        `중복 예약: ${roomGroupName(conflict.groupId)} / ${weekdayLabelFromDate(conflict.date)}요일 ${formatDate(conflict.date)} ${roomTimeRange(conflict)}`,
+        `신청자: ${conflict.requesterName || "확인 불가"} · 상태: ${reservationStatusLabel(conflict.approvalStatus)}`,
+      ].join("\n"),
+    );
   }
 }
 
-function roomGroupHours(reservations, groupId, weekStart, statuses = ["pending", "approved"]) {
+function roomGroupHours(reservations, groupId, monthKey, statuses = ["pending", "approved"]) {
   return (reservations || [])
     .filter((item) => statuses.includes(item.approvalStatus || "pending"))
-    .filter((item) => item.groupId === groupId && reservationWeekStart(item) === weekStart)
+    .filter((item) => item.groupId === groupId && reservationMonthKey(item) === monthKey)
     .reduce((sum, item) => sum + reservationHours(item), 0);
 }
 
-function roomRemainingHours(reservations, groupId, weekStart, statuses = ["pending", "approved"]) {
-  return ROOM_WEEKLY_LIMIT - roomGroupHours(reservations, groupId, weekStart, statuses);
+function roomRemainingHours(reservations, groupId, monthKey, statuses = ["pending", "approved"]) {
+  return ROOM_MONTHLY_LIMIT - roomGroupHours(reservations, groupId, monthKey, statuses);
 }
 
 function reservationHours(item) {
@@ -3619,6 +3683,10 @@ function reservationHours(item) {
 
 function reservationWeekStart(item) {
   return item.weekStart || weekStartKey(item.date);
+}
+
+function reservationMonthKey(item) {
+  return item.monthKey || roomMonthKey(item.date);
 }
 
 function roomTimeRange(item) {
@@ -3654,6 +3722,18 @@ function weekStartKey(date) {
 
 function weekDays(weekStart) {
   return Array.from({ length: 7 }, (_, index) => addDaysKey(weekStart, index));
+}
+
+function roomMonthKey(date) {
+  const parsed = parseDateKey(date || todayKey());
+  if (!parsed) return currentMonthKey();
+  return dateKey(parsed).slice(0, 7);
+}
+
+function monthDays(monthKey) {
+  const [year, month] = String(monthKey || currentMonthKey()).split("-").map(Number);
+  const lastDay = new Date(year, month, 0).getDate();
+  return Array.from({ length: lastDay }, (_, index) => `${year}-${String(month).padStart(2, "0")}-${String(index + 1).padStart(2, "0")}`);
 }
 
 function addDaysKey(date, days) {
@@ -3705,7 +3785,7 @@ function downloadAppDataExcel(data, stats) {
         { label: "자료 수", value: (data.resources || []).length },
         { label: "쪽지 수", value: (data.messages || []).length },
         { label: "비밀번호 요청 수", value: (data.pwRequests || []).length },
-        { label: "638 실습실 예약 수", value: (data.roomReservations || []).length },
+        { label: "638호 실습실 예약 수", value: (data.roomReservations || []).length },
       ],
     },
     {
@@ -3863,7 +3943,7 @@ function downloadAppDataExcel(data, stats) {
       rows: data.signupRequests || [],
     },
     {
-      name: "638예약",
+      name: "638호예약",
       columns: [
         col("단체", "groupId", roomGroupName),
         col("예약자", "requesterName"),
@@ -3874,9 +3954,12 @@ function downloadAppDataExcel(data, stats) {
         col("목적", "purpose"),
         col("상태", "approvalStatus", reservationStatusLabel),
         col("거부 사유", "rejectReason"),
+        col("취소 사유", "cancelReason"),
         col("신청일", "requestedAt", formatDateTime),
         col("처리자", "reviewedBy"),
         col("처리일", "reviewedAt", formatDateTime),
+        col("취소자", "cancelledBy"),
+        col("취소일", "cancelledAt", formatDateTime),
       ],
       rows: data.roomReservations || [],
     },
@@ -4317,6 +4400,38 @@ function buildPwRequestAdminMessage(req, member) {
     senderRole: "system",
     relatedPwRequestId: req.id,
     createdAt: req.createdAt || now(),
+  };
+}
+
+function buildRoomReservationNoticeMessage(reservation, status, reason = "") {
+  if (!reservation?.requesterId || reservation.requesterId === "admin") return null;
+  const statusText = reservationStatusLabel(status);
+  const weekday = weekdayLabelFromDate(reservation.date);
+  const schedule = `${formatDate(reservation.date)}${weekday ? `(${weekday})` : ""} ${roomTimeRange(reservation)}`;
+  const actor = status === "cancelled" ? reservation.cancelledBy : reservation.reviewedBy;
+  const reasonLabel = status === "cancelled" ? "취소 사유" : status === "rejected" ? "거부 사유" : "처리 메모";
+  const content = [
+    `638호 실습실 예약이 ${statusText} 처리되었습니다.`,
+    `단체: ${roomGroupName(reservation.groupId)}`,
+    `일시: ${schedule}`,
+    `이용시간: ${reservationHours(reservation)}시간`,
+    reservation.purpose ? `목적: ${reservation.purpose}` : "",
+    actor ? `처리자: ${actor}` : "",
+    reason ? `${reasonLabel}: ${reason}` : "",
+  ].filter(Boolean).join("\n");
+
+  return {
+    id: makeId("message"),
+    recipientId: reservation.requesterId,
+    recipientName: reservation.requesterName || "예약 신청자",
+    scope: "roomReservation",
+    title: `638호 실습실 예약 ${statusText}`,
+    content,
+    senderId: "system_room_reservation",
+    senderName: "638호 예약 시스템",
+    senderRole: "system",
+    relatedRoomReservationId: reservation.id,
+    createdAt: now(),
   };
 }
 
