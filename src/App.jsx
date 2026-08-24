@@ -1454,7 +1454,10 @@ function RoomReservationPanel({ reservations, user, addRoomReservation }) {
     duration: "1",
     purpose: "",
   });
-  const formMonthKey = roomMonthKey(form.date);
+  const currentRoomMonth = currentMonthKey();
+  const currentMonthStart = monthStartKey(currentRoomMonth);
+  const currentMonthEnd = monthEndKey(currentRoomMonth);
+  const formMonthKey = currentRoomMonth;
   const duration = Number(form.duration || 1);
   const selectedRemaining = roomRemainingHours(reservations, form.groupId, formMonthKey, ["pending", "approved"]);
   const selectedGroup = roomGroup(form.groupId);
@@ -1463,13 +1466,16 @@ function RoomReservationPanel({ reservations, user, addRoomReservation }) {
     .filter((item) => reservationMonthKey(item) === monthKey)
     .sort(sortRoomReservation);
 
-  function moveMonth(delta) {
-    setMonthKey(addMonths(monthKey, delta));
-  }
+  useEffect(() => {
+    setMonthKey(currentRoomMonth);
+    setForm((current) => (
+      roomMonthKey(current.date) === currentRoomMonth ? current : { ...current, date: todayKey() }
+    ));
+  }, [currentRoomMonth]);
 
   function changeDate(date) {
     setForm((current) => ({ ...current, date }));
-    if (date) setMonthKey(roomMonthKey(date));
+    setMonthKey(currentRoomMonth);
   }
 
   function changeStartHour(startHour) {
@@ -1486,16 +1492,19 @@ function RoomReservationPanel({ reservations, user, addRoomReservation }) {
       <div className="room-head">
         <div>
           <h2><CalendarDays size={19} /> 638호 사회복지실습실 예약</h2>
-          <p>매일 08:00-24:00, 1시간 단위 예약. 단체별 월 최대 {ROOM_MONTHLY_LIMIT}시간까지 신청할 수 있습니다.</p>
+          <p>매일 08:00-24:00, 1시간 단위 예약. 이번 달 예약만 신청할 수 있고, 단체별 월 최대 {ROOM_MONTHLY_LIMIT}시간까지 가능합니다.</p>
         </div>
-        <div className="week-controls">
-          <button type="button" onClick={() => moveMonth(-1)} aria-label="이전 달"><ChevronLeft size={17} /></button>
+        <div className="week-controls month-lock">
           <strong>{monthKey.replace("-", ".")}</strong>
-          <button type="button" onClick={() => moveMonth(1)} aria-label="다음 달"><ChevronRight size={17} /></button>
+          <small>이번 달만 예약 가능</small>
         </div>
       </div>
 
       <RoomQuotaSummary reservations={reservations} monthKey={monthKey} />
+      <div className="notice room-month-notice">
+        예약 가능 기간은 {formatDate(currentMonthStart)}부터 {formatDate(currentMonthEnd)}까지입니다.
+        다음 달 예약은 다음 달이 된 후 신청할 수 있고, 단체별 {ROOM_MONTHLY_LIMIT}시간은 매월 1일 다시 시작됩니다.
+      </div>
 
       <form
         className="room-form"
@@ -1513,7 +1522,13 @@ function RoomReservationPanel({ reservations, user, addRoomReservation }) {
         </label>
         <label>
           예약일
-          <input type="date" value={form.date} onChange={(event) => changeDate(event.target.value)} />
+          <input
+            type="date"
+            value={form.date}
+            min={currentMonthStart}
+            max={currentMonthEnd}
+            onChange={(event) => changeDate(event.target.value)}
+          />
         </label>
         <label>
           시작 시간
@@ -3627,6 +3642,9 @@ function validateRoomReservation(form, reservations, { statuses = ["pending", "a
   const group = ROOM_GROUPS.find((item) => item.id === form.groupId);
   if (!group) throw new Error("대표 단체를 선택해주세요.");
   if (!isValidDateKey(form.date)) throw new Error("예약일을 선택해주세요.");
+  if (roomMonthKey(form.date) !== currentMonthKey()) {
+    throw new Error(`예약은 현재 달(${currentMonthKey().replace("-", ".")})만 신청할 수 있습니다. 다음 달 예약은 다음 달이 된 후 신청해주세요.`);
+  }
   if (!Number.isInteger(form.startHour) || form.startHour < ROOM_START_HOUR || form.startHour >= ROOM_END_HOUR) {
     throw new Error("예약 시작 시간은 08시부터 23시까지 선택할 수 있습니다.");
   }
@@ -4586,6 +4604,16 @@ function todayKey() {
 
 function currentMonthKey() {
   return todayKey().slice(0, 7);
+}
+
+function monthStartKey(monthKey = currentMonthKey()) {
+  return `${monthKey}-01`;
+}
+
+function monthEndKey(monthKey = currentMonthKey()) {
+  const [year, month] = String(monthKey).split("-").map(Number);
+  const lastDay = new Date(year, month, 0).getDate();
+  return `${monthKey}-${String(lastDay).padStart(2, "0")}`;
 }
 
 function dateKey(date) {

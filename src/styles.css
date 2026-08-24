@@ -885,6 +885,21 @@ label.inline {
   background: #fff;
 }
 
+.month-lock {
+  padding: 9px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.month-lock small {
+  font-weight: 800;
+}
+
+.room-month-notice {
+  margin: 12px 0;
+}
+
 .room-quota-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
