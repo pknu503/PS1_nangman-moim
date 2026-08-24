@@ -90,6 +90,15 @@ const CLUBS = {
 };
 
 const CLUB_LIST = Object.values(CLUBS);
+const OTHER_MEMBERSHIP = {
+  id: "other",
+  name: "기타",
+  english: "Other",
+  color: "#6b7280",
+  bg: "#f3f4f6",
+  image: "",
+};
+const MEMBERSHIP_OPTIONS = [...CLUB_LIST, OTHER_MEMBERSHIP];
 const ROOM_GROUPS = [
   { id: "hora", name: "오라", color: CLUBS.hora.color, bg: CLUBS.hora.bg },
   { id: "myth", name: "클럽신화", color: CLUBS.myth.color, bg: CLUBS.myth.bg },
@@ -3404,7 +3413,7 @@ function ClubPicker({ selected, toggle, imageMode = false }) {
       <div className="club-picker">
         <span>소속 동아리</span>
         <div className="club-grid compact">
-          {CLUB_LIST.map((club) => (
+          {MEMBERSHIP_OPTIONS.map((club) => (
             <button
               key={club.id}
               type="button"
@@ -3412,7 +3421,7 @@ function ClubPicker({ selected, toggle, imageMode = false }) {
               style={{ "--club": club.color, "--club-bg": club.bg }}
               onClick={() => toggle(club.id)}
             >
-              <img src={club.image} alt={club.name} />
+              {club.image ? <img src={club.image} alt={club.name} /> : <span className="club-fallback-icon">기타</span>}
               <strong>{club.name}</strong>
             </button>
           ))}
@@ -3424,7 +3433,7 @@ function ClubPicker({ selected, toggle, imageMode = false }) {
     <div className="club-picker">
       <span>소속 동아리</span>
       <div>
-        {CLUB_LIST.map((club) => (
+        {MEMBERSHIP_OPTIONS.map((club) => (
           <button
             key={club.id}
             type="button"
@@ -3652,7 +3661,7 @@ function Info({ label, value }) {
 }
 
 function ClubBadge({ clubId }) {
-  const club = CLUBS[clubId] || { name: clubId, color: "#777", bg: "#eee" };
+  const club = membershipOption(clubId) || { name: clubId, color: "#777", bg: "#eee" };
   return <span className="badge" style={{ "--club": club.color, "--club-bg": club.bg }}>{club.name}</span>;
 }
 
@@ -4143,11 +4152,15 @@ function escapeXmlAttribute(value) {
 }
 
 function clubName(clubId) {
-  return CLUBS[clubId]?.name || clubId || "";
+  return membershipOption(clubId)?.name || clubId || "";
 }
 
 function clubNames(clubIds) {
   return Array.isArray(clubIds) ? clubIds.map(clubName).join(", ") : clubName(clubIds);
+}
+
+function membershipOption(clubId) {
+  return MEMBERSHIP_OPTIONS.find((club) => club.id === clubId);
 }
 
 function memberById(members, id) {

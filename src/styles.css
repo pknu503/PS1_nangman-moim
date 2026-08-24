@@ -394,7 +394,11 @@ small {
 }
 
 .club-grid.compact {
-  width: min(420px, 100%);
+  width: min(560px, 100%);
+}
+
+.club-picker .club-grid.compact {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .club-image-card {
@@ -432,6 +436,19 @@ small {
   object-fit: cover;
   background: #fff;
   border: 2px solid color-mix(in srgb, var(--club) 34%, #fff);
+}
+
+.club-image-card .club-fallback-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border: 2px solid color-mix(in srgb, var(--club) 34%, #fff);
+  border-radius: 50%;
+  color: var(--club);
+  background: var(--club-bg);
+  font-size: 15px;
+  font-weight: 900;
 }
 
 .club-image-card strong {
@@ -1554,12 +1571,17 @@ th {
     width: 100%;
   }
 
+  .club-picker .club-grid.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .club-image-card {
     min-height: 86px;
     padding: 8px 4px;
   }
 
-  .club-image-card img {
+  .club-image-card img,
+  .club-image-card .club-fallback-icon {
     width: 52px;
     height: 52px;
   }
